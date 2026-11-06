@@ -1,0 +1,87 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Segoe UI, Tahoma, sans-serif','primaryColor':'#e0f2fe','primaryBorderColor':'#0284c7','lineColor':'#475569'}}}%%
+flowchart LR
+  subgraph ACT["👥 Actors"]
+    direction TB
+    OWNER["👤<br/>OWNER<br/>เจ้าของสัตว์เลี้ยง"]
+    VET["👤<br/>VET<br/>สัตวแพทย์"]
+    STAFF["👤<br/>STAFF<br/>เจ้าหน้าที่คลินิก"]
+    OPS["👤<br/>DevOps<br/>ผู้ดูแลระบบ"]
+    WORKER["⚙️<br/>Worker<br/>system actor"]
+  end
+
+  subgraph SYS["🐾 PetCare System"]
+    direction TB
+    UC1(("สมัครสมาชิก"))
+    UC2(("เข้าสู่ระบบ /<br/>ออกจากระบบ"))
+    UC3(("จัดการข้อมูล<br/>สัตว์เลี้ยง"))
+    UC4(("ดูสล็อตว่าง<br/>ตามกะแพทย์"))
+    UC5(("จองนัดหมาย"))
+    UC6(("ดูนัดของฉัน /<br/>รายละเอียดนัด"))
+    UC7(("ยกเลิกนัด"))
+    UC8(("ดูคิวสด /<br/>ตำแหน่งคิว"))
+    UC9(("ดูตารางงาน /<br/>เปิดเคส"))
+    UC10(("บันทึกการรักษา<br/>(versioned)"))
+    UC11(("ส่งคำขอปรับเวลา"))
+    UC12(("อนุมัติ / ปฏิเสธ<br/>คำขอปรับเวลา"))
+    UC13(("เปลี่ยนสถานะนัด<br/>เช็คอิน → รักษา → เสร็จ"))
+    UC14(("เลื่อน / สลับ /<br/>โอนเคส"))
+    UC15(("จัดการกะ<br/>สัตวแพทย์"))
+    UC16(("สร้างบัญชี<br/>VET / STAFF"))
+    UC17(("ดู Audit Log"))
+    UC18(("รับการแจ้งเตือน<br/>(in-app)"))
+    UC19(("Deploy / Monitoring /<br/>Auto-recovery"))
+    UC20(("เขียน Audit Log<br/>+ Outbox (transaction)"))
+    UC21(("อัปโหลด / ลบ<br/>รูปสัตว์เลี้ยง"))
+    UC22(("ดูรูปสัตว์เลี้ยง"))
+  end
+
+  OWNER --> UC1
+  OWNER --> UC2
+  OWNER --> UC3
+  OWNER --> UC4
+  OWNER --> UC5
+  OWNER --> UC6
+  OWNER --> UC7
+  OWNER --> UC8
+  OWNER --> UC18
+  OWNER --> UC21
+  OWNER --> UC22
+
+  VET --> UC2
+  VET --> UC9
+  VET --> UC10
+  VET --> UC11
+  VET --> UC18
+  VET --> UC22
+
+  STAFF --> UC2
+  STAFF --> UC7
+  STAFF --> UC12
+  STAFF --> UC13
+  STAFF --> UC14
+  STAFF --> UC15
+  STAFF --> UC16
+  STAFF --> UC17
+  STAFF --> UC18
+  STAFF --> UC22
+
+  OPS --> UC19
+  WORKER -. "สร้าง notification<br/>ตาม outbox" .-> UC18
+
+  UC5 -. "«include»" .-> UC4
+  UC12 -. "อนุมัติแล้ว<br/>เรียก UC14" .-> UC14
+
+  UC5 -. "«include»" .-> UC20
+  UC7 -. "«include»" .-> UC20
+  UC10 -. "«include»" .-> UC20
+  UC13 -. "«include»" .-> UC20
+  UC14 -. "«include»" .-> UC20
+  UC15 -. "«include»" .-> UC20
+  UC21 -. "«include»" .-> UC20
+
+  classDef actor fill:#fef3c7,stroke:#d97706,color:#78350f,stroke-width:2px;
+  classDef uc fill:#e0f2fe,stroke:#0284c7,color:#0c4a6e;
+  class OWNER,VET,STAFF,OPS,WORKER actor;
+  class UC1,UC2,UC3,UC4,UC5,UC6,UC7,UC8,UC9,UC10,UC11,UC12,UC13,UC14,UC15,UC16,UC17,UC18,UC19,UC20,UC21,UC22 uc;
+  style ACT fill:#fffbeb,stroke:#f59e0b,stroke-width:2px
+  style SYS fill:#f8fafc,stroke:#94a3b8,stroke-width:2px

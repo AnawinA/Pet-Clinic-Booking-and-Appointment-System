@@ -1,0 +1,139 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    -webkit-tap-highlight-color: transparent;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    @apply min-h-screen bg-slate-50 text-slate-900 antialiased transition-colors duration-300 dark:bg-slate-950 dark:text-slate-100;
+  }
+  ::selection {
+    @apply bg-brand-200 text-brand-900;
+  }
+  .dark ::selection {
+    @apply bg-brand-500/30 text-white;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm shadow-slate-200/50 transition-colors dark:border-slate-800 dark:bg-slate-900/80 dark:shadow-none;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-xl px-3 py-2 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus-visible:ring-offset-slate-950;
+  }
+  .btn-primary {
+    @apply btn bg-brand-600 text-white shadow-sm shadow-brand-600/20 hover:bg-brand-700;
+  }
+  .btn-secondary {
+    @apply btn border border-slate-300 bg-white text-slate-700 hover:border-slate-400 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:border-slate-600 dark:hover:bg-slate-800;
+  }
+  .btn-danger {
+    @apply btn bg-rose-600 text-white hover:bg-rose-700;
+  }
+  .input {
+    @apply w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100 dark:border-slate-700 dark:bg-slate-950/60 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:border-brand-400 dark:focus:ring-brand-500/20;
+  }
+  .label {
+    @apply mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400;
+  }
+  .table-wrap {
+    @apply overflow-x-auto rounded-xl border border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900;
+  }
+}
+
+/* Legacy palette remapping for pages that use Tailwind's slate/brand utilities directly. */
+@layer utilities {
+  .dark .bg-white {
+    background-color: rgb(15 23 42 / 0.9);
+  }
+  .dark .bg-white\/95 {
+    background-color: rgb(2 6 23 / 0.9);
+  }
+  .dark .bg-slate-50 {
+    background-color: #0f172a;
+  }
+  .dark .bg-slate-100 {
+    background-color: #1e293b;
+  }
+  .dark .bg-slate-200 {
+    background-color: #334155;
+  }
+  .dark .bg-brand-50 {
+    background-color: rgb(16 185 129 / 0.12);
+  }
+  .dark .bg-brand-100 {
+    background-color: rgb(16 185 129 / 0.18);
+  }
+  .dark .bg-rose-50 {
+    background-color: rgb(244 63 94 / 0.1);
+  }
+
+  .dark .text-slate-900 {
+    color: #f8fafc;
+  }
+  .dark .text-slate-800 {
+    color: #f1f5f9;
+  }
+  .dark .text-slate-700 {
+    color: #e2e8f0;
+  }
+  .dark .text-slate-600 {
+    color: #cbd5e1;
+  }
+  .dark .text-slate-500 {
+    color: #94a3b8;
+  }
+  .dark .text-slate-400 {
+    color: #8fa0b8;
+  }
+  .dark .text-brand-600,
+  .dark .text-brand-700 {
+    color: #6ee7b7;
+  }
+  .dark .text-brand-800 {
+    color: #a7f3d0;
+  }
+  .dark .text-rose-600,
+  .dark .text-rose-700 {
+    color: #fda4af;
+  }
+  .dark .text-amber-600,
+  .dark .text-amber-700 {
+    color: #fcd34d;
+  }
+  .dark .text-emerald-700 {
+    color: #6ee7b7;
+  }
+
+  .dark .border-slate-200 {
+    border-color: #1e293b;
+  }
+  .dark .border-slate-300 {
+    border-color: #334155;
+  }
+  .dark .divide-slate-200 > :not([hidden]) ~ :not([hidden]) {
+    border-color: #1e293b;
+  }
+
+  .dark .hover\:bg-slate-50:hover {
+    background-color: #0f172a;
+  }
+  .dark .hover\:bg-slate-100:hover {
+    background-color: #1e293b;
+  }
+  .dark .hover\:bg-white:hover {
+    background-color: #1e293b;
+  }
+  .dark .hover\:text-slate-600:hover {
+    color: #e2e8f0;
+  }
+  .dark .hover\:text-slate-700:hover {
+    color: #f8fafc;
+  }
+}

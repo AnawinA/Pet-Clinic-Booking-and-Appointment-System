@@ -1,0 +1,45 @@
+name: petcare-e2e
+
+services:
+  postgres-e2e:
+    image: postgres:16-alpine
+    restart: "no"
+    environment:
+      POSTGRES_USER: petcare
+      POSTGRES_PASSWORD: petcare-e2e
+      POSTGRES_DB: petcare_e2e
+    volumes:
+      - pgdata_e2e:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U petcare -d petcare_e2e"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+
+  web-e2e:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: petcare-backend:e2e
+    restart: "no"
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://petcare:petcare-e2e@postgres-e2e:5432/petcare_e2e
+      JWT_SECRET: e2e-only-insecure-secret-not-for-production
+      ACCESS_TOKEN_MINUTES: "60"
+      CORS_ORIGINS: http://127.0.0.1:5174,http://localhost:5174
+      ENVIRONMENT: test
+      PHOTO_DIR: /data/pet-photos
+      INSTANCE_ID: web-e2e
+    volumes:
+      - petphotos_e2e:/data/pet-photos
+    ports:
+      - "8001:8000"
+    depends_on:
+      postgres-e2e:
+        condition: service_healthy
+
+volumes:
+  pgdata_e2e:
+  petphotos_e2e:

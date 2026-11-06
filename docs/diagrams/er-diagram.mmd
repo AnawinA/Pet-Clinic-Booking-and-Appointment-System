@@ -1,0 +1,128 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Segoe UI, Tahoma, sans-serif','lineColor':'#475569'}}}%%
+erDiagram
+  users {
+    uuid id PK "gen_random_uuid()"
+    citext email UK "unique, case-insensitive"
+    text password_hash "Argon2id"
+    text full_name
+    text phone "nullable"
+    user_role role "OWNER | VET | STAFF"
+    bool is_active "default true"
+    timestamptz created_at
+  }
+
+  pets {
+    uuid id PK
+    uuid owner_id FK "users.id"
+    text name
+    text species
+    text breed "nullable"
+    text sex "nullable"
+    date birth_date "nullable"
+    numeric weight_kg "numeric(5,2)"
+    text medical_notes "nullable"
+    text photo_filename "nullable, WebP on petphotos volume"
+    timestamptz photo_updated_at "nullable"
+    timestamptz created_at
+  }
+
+  vet_shifts {
+    uuid id PK
+    uuid vet_id FK "users.id (VET)"
+    date shift_date
+    time start_time "09:00-17:00"
+    time end_time "09:00-17:00"
+    uuid created_by FK "users.id (STAFF)"
+    timestamptz created_at
+  }
+
+  appointments {
+    uuid id PK
+    uuid owner_id FK "users.id (OWNER)"
+    uuid pet_id FK "pets.id"
+    uuid vet_id FK "users.id (VET)"
+    uuid shift_id FK "vet_shifts.id"
+    timestamptz slot_start "UTC"
+    timestamptz slot_end "start + 30 min"
+    appointment_status status "6 states"
+    text symptoms
+    text cancel_reason "nullable"
+    timestamptz cancelled_at "nullable"
+    int version "optimistic lock"
+    timestamptz created_at
+    timestamptz updated_at
+  }
+
+  reschedule_requests {
+    uuid id PK
+    uuid appointment_id FK "appointments.id"
+    uuid requested_by FK "users.id (VET)"
+    timestamptz proposed_slot_start
+    text reason
+    reschedule_status status "3 states"
+    uuid reviewed_by FK "users.id (STAFF)"
+    timestamptz reviewed_at "nullable"
+    text review_note "nullable"
+    timestamptz created_at
+  }
+
+  treatment_notes {
+    uuid id PK
+    uuid appointment_id FK "appointments.id"
+    int version "unique per appointment"
+    text content
+    uuid created_by FK "users.id (VET)"
+    timestamptz created_at
+  }
+
+  outbox_events {
+    uuid id PK
+    text event_type "event name"
+    uuid aggregate_id "appointment id"
+    jsonb payload
+    timestamptz available_at "retry backoff"
+    timestamptz processed_at "nullable"
+    int attempts "default 0"
+    text last_error "nullable"
+    timestamptz created_at
+  }
+
+  notifications {
+    uuid id PK
+    uuid event_id FK "outbox_events.id"
+    uuid recipient_id FK "users.id"
+    text type
+    text title
+    text message
+    bool is_read "default false"
+    timestamptz created_at
+  }
+
+  audit_logs {
+    bigint id PK
+    uuid actor_id "logical -> users.id"
+    user_role actor_role "nullable"
+    text entity_type
+    uuid entity_id "polymorphic"
+    text action
+    jsonb before "nullable"
+    jsonb after "nullable"
+    text request_id "nullable"
+    timestamptz created_at
+  }
+
+  users ||--o{ pets : "owns"
+  users ||--o{ vet_shifts : "works as vet"
+  users ||--o{ vet_shifts : "creates as staff"
+  users ||--o{ appointments : "owner_id"
+  users ||--o{ appointments : "vet_id"
+  pets ||--o{ appointments : "booked for"
+  vet_shifts ||--o{ appointments : "provides slot"
+  appointments ||--o{ reschedule_requests : "has requests"
+  users ||--o{ reschedule_requests : "requested_by"
+  users ||--o{ reschedule_requests : "reviewed_by"
+  appointments ||--o{ treatment_notes : "has notes"
+  users ||--o{ treatment_notes : "created_by"
+  outbox_events ||--o{ notifications : "fan-out"
+  users ||--o{ notifications : "receives"
+  users ||..o{ audit_logs : "actor (logical)"

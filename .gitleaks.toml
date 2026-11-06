@@ -1,0 +1,12 @@
+title = "PetCare gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Only the documented placeholder template and lockfiles are exempt."
+paths = [
+  '''(^|/)\.env\.example$''',
+  '''(^|/)package-lock\.json$''',
+  '''(^|/)frontend/dist/''',
+]

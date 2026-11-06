@@ -1,0 +1,52 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Segoe UI, Tahoma, sans-serif','primaryColor':'#e0f2fe','primaryBorderColor':'#0284c7','lineColor':'#475569'}}}%%
+flowchart TB
+  U["🌐 Browser"]
+
+  N["🛡️ nginx :80<br/>React SPA + /api proxy<br/>round-robin · login rate-limit 30 r/m<br/>client body ≤ 10 MB"]
+
+  W1["⚙️ FastAPI web1 :8000<br/>stateless · JWT · /metrics"]
+  W2["⚙️ FastAPI web2 :8000<br/>stateless · JWT · /metrics"]
+
+  PG[("🗄️ PostgreSQL 16 :5432")]
+  VOL[("💾 pgdata volume")]
+  PV[("🖼️ petphotos volume<br/>WebP ≤ 1024 px")]
+  WK["🔁 Outbox Worker<br/>FOR UPDATE SKIP LOCKED"]
+  MG["📦 Alembic migrate<br/>one-shot"]
+
+  subgraph OBS["📊 Observability"]
+    direction LR
+    P["📈 Prometheus :9090"]
+    G["📉 Grafana :3000"]
+    NE["🖥️ Node Exporter :9100"]
+    CA["📊 cAdvisor :8080"]
+    G --> P
+  end
+
+  AH["🩹 autoheal<br/>restart container ที่ unhealthy"]
+
+  U --> N
+  N --> W1
+  N --> W2
+  W1 --> PG
+  W2 --> PG
+  W1 -. "PHOTO_DIR" .-> PV
+  W2 -. "PHOTO_DIR" .-> PV
+  WK --> PG
+  MG --> PG
+  PG --> VOL
+  P -. "scrape /metrics" .-> W1
+  P -. "scrape /metrics" .-> W2
+  P -. "scrape" .-> NE
+  P -. "scrape" .-> CA
+  AH -. "docker.sock" .-> N
+  AH -. "docker.sock" .-> W1
+
+  classDef edge fill:#e0f2fe,stroke:#0284c7,color:#0c4a6e,stroke-width:2px;
+  classDef app fill:#f0fdf4,stroke:#16a34a,color:#14532d,stroke-width:2px;
+  classDef data fill:#fef3c7,stroke:#d97706,color:#78350f,stroke-width:2px;
+  classDef obs fill:#f5f3ff,stroke:#7c3aed,color:#4c1d95;
+  class U,N edge;
+  class W1,W2,WK,MG app;
+  class PG,VOL,PV data;
+  class P,G,NE,CA obs;
+  style OBS fill:#faf5ff,stroke:#a78bfa,stroke-width:2px

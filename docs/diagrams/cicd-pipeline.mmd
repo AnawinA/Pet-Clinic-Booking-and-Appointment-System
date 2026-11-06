@@ -1,0 +1,41 @@
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Segoe UI, Tahoma, sans-serif','primaryColor':'#e0f2fe','primaryBorderColor':'#0284c7','lineColor':'#475569'}}}%%
+flowchart TB
+  A["📥 1. Checkout<br/>checkout scm · git rev-parse --short HEAD"]
+
+  subgraph BUILD["🧪 2. Build &amp; Verify"]
+    direction TB
+    B["🐳 Docker build<br/>docker compose build<br/>+ nginx image"]
+    C["🐘 PostgreSQL test DB<br/>create petcare_test"]
+    D["🧹 Static checks &amp; tests<br/>ruff · mypy · pytest<br/>alembic upgrade head"]
+    E["🔐 Gitleaks<br/>secret scan ด้วย .gitleaks.toml"]
+  end
+
+  F["🚀 3. Deploy<br/>docker compose up -d --remove-orphans"]
+  S["🐳 Docker Compose Stack<br/>nginx · web1/web2 · worker · migrate · postgres"]
+  G["🔎 4. Post-Deployment Verification<br/>seed + scripts/post_deploy_check.sh"]
+  H["📈 ตรวจ health live/ready · login · availability<br/>Prometheus targets ครบ · ไม่มี 5xx"]
+  OK["✅ ผ่าน — พร้อมใช้งาน"]
+  RB["⛔ ไม่ผ่าน — rollback ตาม docs/runbook.md"]
+
+  A --> B
+  B --> C
+  B --> D
+  B --> E
+  C --> F
+  D --> F
+  E --> F
+  F --> S
+  S --> G
+  G --> H
+  H -->|"ผ่าน"| OK
+  H -->|"ไม่ผ่าน"| RB
+
+  classDef stage fill:#e0f2fe,stroke:#0284c7,color:#0c4a6e,stroke-width:2px;
+  classDef check fill:#f0fdf4,stroke:#16a34a,color:#14532d;
+  classDef stack fill:#fef3c7,stroke:#d97706,color:#78350f,stroke-width:2px;
+  classDef fail fill:#fee2e2,stroke:#dc2626,color:#7f1d1d;
+  class A,B,C,D,E,F,G,H stage;
+  class OK check;
+  class S stack;
+  class RB fail;
+  style BUILD fill:#f8fafc,stroke:#94a3b8,stroke-width:2px
