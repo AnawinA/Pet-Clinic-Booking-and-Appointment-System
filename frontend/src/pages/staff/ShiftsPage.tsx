@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { endpoints } from "../../api/endpoints";
+import { TimeInput } from "../../components/TimeInput";
 import { pushToast } from "../../components/Toast";
 import { EmptyState, ErrorText, Field, PageHeader, Spinner } from "../../components/ui";
 import { bangkokToday, formatDate } from "../../lib/format";
@@ -37,6 +38,18 @@ export default function ShiftsPage() {
       void queryClient.invalidateQueries({ queryKey: ["availability"] });
     },
   });
+
+  const nextHalfHour = (value: string): string => {
+    const [hours, minutes] = value.split(":").map(Number);
+    if (!Number.isFinite(hours) || !Number.isFinite(minutes)) return "09:30";
+    const total = Math.min(hours * 60 + minutes + 30, 17 * 60);
+    return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
+  };
+
+  const handleStartChange = (value: string) => {
+    setStart(value);
+    if (value && end <= value) setEnd(nextHalfHour(value));
+  };
 
   const remove = useMutation({
     mutationFn: (id: string) => endpoints.shifts.remove(id),
@@ -79,28 +92,15 @@ export default function ShiftsPage() {
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="เริ่ม">
-              <input
-                className="input"
-                type="time"
-                step={1800}
-                min="09:00"
-                max="17:00"
-                value={start}
-                onChange={(event) => setStart(event.target.value)}
-              />
+              <TimeInput value={start} max="16:30" onChange={handleStartChange} />
             </Field>
             <Field label="สิ้นสุด">
-              <input
-                className="input"
-                type="time"
-                step={1800}
-                min="09:00"
-                max="17:00"
-                value={end}
-                onChange={(event) => setEnd(event.target.value)}
-              />
+              <TimeInput value={end} min={nextHalfHour(start)} max="17:00" onChange={setEnd} />
             </Field>
           </div>
+          <p className="text-xs text-slate-500 dark:text-slate-400">
+            เลือกเวลาเป็นรอบละ 30 นาที ระหว่าง 09:00–17:00 น.
+          </p>
           <ErrorText error={create.error} />
           <button type="submit" className="btn-primary w-full" disabled={create.isPending || !vetId}>
             {create.isPending ? "กำลังสร้าง..." : "สร้างกะ"}

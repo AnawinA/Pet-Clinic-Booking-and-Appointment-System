@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import date
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import require_roles
@@ -20,7 +20,7 @@ router = APIRouter(prefix="/shifts", tags=["shifts"])
 
 @router.get("", response_model=list[ShiftOut])
 async def list_shifts(
-    day: date | None = None,
+    day: date | None = Query(default=None, alias="date"),
     vet_id: uuid.UUID | None = None,
     user: User = Depends(require_roles(UserRole.STAFF, UserRole.VET)),
     session: AsyncSession = Depends(get_session),

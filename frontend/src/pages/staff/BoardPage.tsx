@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { endpoints } from "../../api/endpoints";
 import type { AppointmentStatus, ScheduleEntry } from "../../api/types";
 import { PetAvatar } from "../../components/PetAvatar";
+import { TimeInput } from "../../components/TimeInput";
 import { pushToast } from "../../components/Toast";
 import {
   EmptyState,
@@ -40,8 +41,10 @@ export default function BoardPage() {
   const [vetId, setVetId] = useState("");
   const [swapIds, setSwapIds] = useState<string[]>([]);
   const [rescheduleTarget, setRescheduleTarget] = useState<ScheduleEntry | null>(null);
-  const [newSlot, setNewSlot] = useState("");
+  const [newSlotDate, setNewSlotDate] = useState("");
+  const [newSlotTime, setNewSlotTime] = useState("09:00");
   const [transferTarget, setTransferTarget] = useState<ScheduleEntry | null>(null);
+  const newSlot = newSlotDate ? `${newSlotDate}T${newSlotTime}` : "";
   const [transferVet, setTransferVet] = useState("");
 
   useEffect(() => {
@@ -81,7 +84,8 @@ export default function BoardPage() {
     onSuccess: () => {
       pushToast("success", "เลื่อนนัดหมายแล้ว");
       setRescheduleTarget(null);
-      setNewSlot("");
+      setNewSlotDate("");
+      setNewSlotTime("09:00");
       invalidateBoard();
     },
   });
@@ -233,7 +237,8 @@ export default function BoardPage() {
                   className="btn-secondary"
                   onClick={() => {
                     setRescheduleTarget(entry);
-                    setNewSlot("");
+                    setNewSlotDate("");
+                    setNewSlotTime("09:00");
                   }}
                 >
                   เลื่อนนัด
@@ -262,14 +267,28 @@ export default function BoardPage() {
         <p className="text-sm text-slate-600">
           {rescheduleTarget ? `${rescheduleTarget.pet_name} · ${formatDateTime(rescheduleTarget.slot_start)} น.` : ""}
         </p>
-        <Field label="วันและเวลาใหม่ (เวลาไทย)">
-          <input
-            className="input mt-2"
-            type="datetime-local"
-            value={newSlot}
-            onChange={(event) => setNewSlot(event.target.value)}
-          />
-        </Field>
+        <div className="mt-2 grid gap-3 sm:grid-cols-[1.15fr_1fr]">
+          <Field label="วันที่ใหม่ (เวลาไทย)">
+            <input
+              className="input mt-2"
+              type="date"
+              value={newSlotDate}
+              onChange={(event) => setNewSlotDate(event.target.value)}
+            />
+          </Field>
+          <Field label="เวลาใหม่ (เวลาไทย)">
+            <TimeInput
+              className="input mt-2"
+              value={newSlotTime}
+              min="09:00"
+              max="16:30"
+              onChange={setNewSlotTime}
+            />
+          </Field>
+        </div>
+        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+          เลือกเวลาเป็นรอบละ 30 นาที ระหว่าง 09:00–16:30 น.
+        </p>
         <ErrorText error={rescheduleMutation.error} />
         <div className="mt-4 flex justify-end gap-2">
           <button type="button" className="btn-secondary" onClick={() => setRescheduleTarget(null)}>

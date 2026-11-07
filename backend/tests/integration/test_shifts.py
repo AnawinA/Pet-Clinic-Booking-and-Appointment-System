@@ -21,6 +21,17 @@ async def test_staff_creates_shift(client, tokens, seeded):
     assert response.json()["start_time"] == "10:00"
 
 
+async def test_list_shifts_filters_by_date(client, tokens, seeded):
+    other_day = seeded["day"] + timedelta(days=1)
+    response = await client.get(
+        "/api/v1/shifts",
+        params={"date": other_day.isoformat()},
+        headers=auth(tokens["STAFF"]),
+    )
+    assert response.status_code == 200, response.text
+    assert response.json() == []
+
+
 async def test_overlapping_shift_returns_409(client, tokens, seeded):
     day = seeded["day"] + timedelta(days=3)
     payload = {

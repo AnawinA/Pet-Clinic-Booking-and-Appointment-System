@@ -5,6 +5,7 @@ import { Link, useParams } from "react-router-dom";
 import { fieldErrors } from "../../api/client";
 import { endpoints } from "../../api/endpoints";
 import { PetAvatar } from "../../components/PetAvatar";
+import { TimeInput } from "../../components/TimeInput";
 import { pushToast } from "../../components/Toast";
 import { EmptyState, ErrorText, Field, PageHeader, Spinner, StatusBadge } from "../../components/ui";
 import { bangkokInputToIso, formatDateTime } from "../../lib/format";
@@ -13,8 +14,10 @@ export default function CaseDetailPage() {
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
   const [content, setContent] = useState("");
-  const [proposed, setProposed] = useState("");
+  const [proposedDate, setProposedDate] = useState("");
+  const [proposedTime, setProposedTime] = useState("09:00");
   const [reason, setReason] = useState("");
+  const proposed = proposedDate ? `${proposedDate}T${proposedTime}` : "";
 
   const appointment = useQuery({
     queryKey: ["case", id],
@@ -51,7 +54,8 @@ export default function CaseDetailPage() {
       endpoints.appointments.requestReschedule(id!, bangkokInputToIso(proposed), reason.trim()),
     onSuccess: () => {
       pushToast("success", "ส่งคำขอปรับเวลาแล้ว");
-      setProposed("");
+      setProposedDate("");
+      setProposedTime("09:00");
       setReason("");
     },
   });
@@ -149,14 +153,25 @@ export default function CaseDetailPage() {
           <div>
             <h2 className="mb-2 font-semibold">ขอปรับเวลา</h2>
             <form className="card space-y-3" onSubmit={submitRequest}>
-              <Field label="เวลาใหม่ (เวลาไทย)" error={requestErrors.proposed_slot_start}>
+              <Field label="วันที่ใหม่ (เวลาไทย)" error={requestErrors.proposed_slot_start}>
                 <input
                   className="input"
-                  type="datetime-local"
-                  value={proposed}
-                  onChange={(event) => setProposed(event.target.value)}
+                  type="date"
+                  value={proposedDate}
+                  onChange={(event) => setProposedDate(event.target.value)}
                 />
               </Field>
+              <Field label="เวลาใหม่ (เวลาไทย)">
+                <TimeInput
+                  value={proposedTime}
+                  min="09:00"
+                  max="16:30"
+                  onChange={setProposedTime}
+                />
+              </Field>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                เลือกเวลาเป็นรอบละ 30 นาที ระหว่าง 09:00–16:30 น.
+              </p>
               <Field label="เหตุผล" error={requestErrors.reason}>
                 <textarea
                   className="input min-h-20"

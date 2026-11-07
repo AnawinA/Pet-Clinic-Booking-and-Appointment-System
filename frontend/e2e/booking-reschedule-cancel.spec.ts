@@ -146,7 +146,9 @@ test("เจ้าของจอง → staff เลื่อนนัด → �
       await expect(card).toContainText(bangkokTime(first.slot_start));
 
       await card.getByRole("button", { name: "เลื่อนนัด", exact: true }).click();
-      await staff.locator('input[type="datetime-local"]').fill(bangkokInputValue(second.slot_start));
+      const [secondDate, secondTime] = bangkokInputValue(second.slot_start).split("T");
+      await staff.getByLabel("วันที่ใหม่ (เวลาไทย)").fill(secondDate);
+      await staff.getByLabel("เวลาใหม่ (เวลาไทย)").fill(secondTime);
       await staff.getByRole("button", { name: "ยืนยันเลื่อนนัด" }).click();
 
       await expect(
