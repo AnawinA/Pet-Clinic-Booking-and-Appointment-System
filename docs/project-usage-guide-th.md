@@ -1,75 +1,61 @@
 # คู่มือใช้งานโปรเจกต์ Pet Clinic และระบบ CI/CD
 
-คู่มือนี้รวบรวมขั้นตอนตั้งแต่เตรียมเครื่อง, เริ่ม Jenkins และ `devtools`, รันแอป,
-ตั้ง GitHub webhook, build และ deploy อัตโนมัติ, ตรวจสอบผล และแก้ปัญหา
-สำหรับการทำงานแบบ demo ที่ใช้ Jenkins เชื่อมต่อ `devtools` ด้วย SSH
+คู่มือนี้อธิบายการ clone โปรเจกต์ การเริ่ม Jenkins และ `devtools` การตั้งค่า SSH และ GitHub webhook ผ่าน ngrok การรันแอปด้วย Docker Compose และการแก้ปัญหาเบื้องต้น
 
-> **ขอบเขตและความปลอดภัย:** ตัวอย่างใช้ SSH เป็น `root` และ Docker daemon
-> ใน `devtools` ซึ่งมีสิทธิ์สูง ให้ใช้ใน demo environment ที่แยกจากระบบจริงเท่านั้น
-> ปิด root password login, ห้ามเผยแพร่ secrets และอย่าเปิด Jenkins หรือ Docker daemon
-> สู่อินเทอร์เน็ตโดยไม่มีมาตรการป้องกัน
+> **คำเตือนด้านความปลอดภัย:** ตัวอย่างนี้ให้ `devtools` ทำงานแบบ `--privileged` และให้ Jenkins เชื่อมต่อ SSH ด้วย `root` ซึ่งมีสิทธิ์สูงมาก ควรใช้เฉพาะเครื่อง demo ที่เชื่อถือได้ ปิด root password login และห้ามเปิด Jenkins, Docker daemon หรือ Jupyter ที่ไม่มีการยืนยันตัวตนสู่อินเทอร์เน็ต
 
-## ภาพรวมขั้นตอน
+## ภาพรวมการทำงาน
 
-1. เตรียม Docker, Git, Jenkins, `devtools` และ Docker Hub
-2. เริ่ม containers บน Docker network เดียวกัน
-3. สร้าง SSH key แล้วติดตั้งเฉพาะ public key ใน `devtools`
-4. เพิ่ม private key และ secrets เป็น Jenkins credentials
-5. สร้าง Pipeline job และ GitHub push webhook
-6. ทดสอบ build, publish, deploy และตรวจสอบการเข้าใช้งานแอป
+1. Clone repository public ลงในเครื่องที่ใช้พัฒนา
+2. เริ่ม Jenkins และ `devtools` ให้อยู่บน Docker network เดียวกัน
+3. ติดตั้ง SSH public key ใน `devtools` และเก็บ private key เป็น Jenkins credential
+4. เพิ่ม Jenkins credentials ที่ pipeline ต้องใช้ และตั้ง SSH host-key verification
+5. เปิด Jenkins ให้ GitHub ติดต่อได้ด้วย ngrok และสร้าง push webhook
+6. Push commit เพื่อให้ Jenkins build, test, publish images และ deploy บน `devtools`
 
 ## 1. สิ่งที่ต้องเตรียม
 
 ### เครื่องและบริการ
 
-- Docker Engine/Desktop ที่รองรับ `docker run` และ Docker Compose
+- Docker Engine หรือ Docker Desktop ที่ใช้งาน `docker run` และ Docker Compose ได้
 - Git และ terminal ที่ใช้ Docker CLI ได้บนเครื่อง host
-- บัญชี ngrok พร้อม authtoken และ HTTPS dev domain สำหรับเปิดทางจาก GitHub ไปยัง Jenkins ที่ localhost
-- Jenkins ที่รับ webhook ผ่าน URL HTTPS ของ ngrok ได้
-- `devtools` image `tuchsanai/devtools:2569_1` ที่มี SSH server, Docker Engine,
-  Docker Compose v2.30 ขึ้นไป, Bash, tar และ curl
-- Jenkins agent ที่มี Git, tar และ OpenSSH client (`ssh`)
-- Jenkins และ `devtools` ต้องสื่อสารกันได้ทาง network โดยชื่อ `devtools` และ port 22
-- Docker Hub account ที่มี repositories `petcare-backend` และ `petcare-nginx`
-  พร้อม access token ที่มีสิทธิ์ push
+- บัญชี ngrok พร้อม authtoken และ HTTPS dev domain
+- Jenkins ที่รับ GitHub webhook ผ่าน HTTPS URL ของ ngrok ได้
+- Docker Hub account ที่มี repositories `petcare-backend` และ `petcare-nginx` พร้อม access token ที่มีสิทธิ์ push
+- Jenkins agent ที่รัน pipeline ต้องมี `git`, `tar` และ OpenSSH client (`ssh`)
+- `devtools` image `tuchsanai/devtools:2569_1` มี SSH server, Docker Engine, Docker Compose, Bash, tar และ curl
+- Jenkins agent และ `devtools` ต้องสื่อสารกันได้ผ่าน Docker network โดยใช้ชื่อ `devtools` และ SSH port 22
 
-Jenkins agent ไม่จำเป็นต้องรัน Docker; คำสั่ง build/test/push/deploy ของ pipeline
-จะทำงานบน `devtools`
+Repository นี้เป็น public จึงไม่ต้องใช้ GitHub token หรือ SCM credential เพื่อให้ Jenkins checkout source ผ่าน HTTPS
 
-เนื่องจาก repository เป็น public จึงไม่ต้องใช้ GitHub token หรือ SCM credential
-เพื่อให้ Jenkins อ่าน repository สำหรับ `checkout scm`
+### Jenkins plugins
+
+ติดตั้ง plugins เหล่านี้จาก **Manage Jenkins → Plugins**:
+
+| Plugin | หน้าที่ |
+|---|---|
+| Pipeline | รัน Jenkinsfile |
+| Git | Checkout source จาก Git |
+| GitHub | รองรับ trigger `githubPush()` และ GitHub webhook |
+| Credentials Binding | ส่ง credentials ให้ pipeline |
+| SSH Agent | ใช้ SSH private-key credential |
+
+SSH Agent plugin ไม่ได้ติดตั้งคำสั่ง OpenSSH client (`ssh`) ให้ Jenkins agent เอง จึงต้องตรวจว่ามี executable นี้ใน agent ที่รันงาน
 
 ## 2. Clone repository
 
-บนเครื่อง host ให้เปิด terminal ไปยังโฟลเดอร์ที่ต้องการเก็บ source แล้ว clone
-repository สาธารณะ:
+บน host เปิด terminal ในตำแหน่งที่ต้องการเก็บ source แล้ว clone repository:
 
 ```bash
 git clone https://github.com/AnawinA/Pet-Clinic-Booking-and-Appointment-System.git
 cd Pet-Clinic-Booking-and-Appointment-System
 ```
 
-ใช้ working copy นี้สำหรับอ่าน/แก้ไขโค้ดหรือรันแอปด้วยตนเองในขั้นตอนต่อไป
-Jenkins Pipeline จะ checkout commit จาก GitHub เอง และส่ง source revision นั้นไปยัง
-`devtools`; ไม่จำเป็นต้อง clone ซ้ำบน `devtools` สำหรับการ deploy อัตโนมัติ
-
-### Jenkins plugins
-
-ติดตั้งจาก **Manage Jenkins → Plugins**:
-
-| Plugin | หน้าที่ |
-|---|---|
-| Pipeline | รัน Jenkinsfile |
-| Git | Checkout source |
-| GitHub | รองรับ `githubPush()` และ GitHub webhook |
-| Credentials Binding | ส่ง credentials ให้ pipeline |
-| SSH Agent | ใช้ SSH private-key credential |
-
-SSH Agent plugin ไม่ได้ติดตั้งคำสั่ง `ssh` ให้ Jenkins agent เอง
+ใช้ working copy นี้สำหรับอ่านหรือแก้ไขโค้ดและรันแอปด้วยตนเอง ส่วน Jenkins จะ checkout commit จาก GitHub เองและส่ง source revision นั้นไปยัง `devtools` ทุก build
 
 ## 3. เริ่ม Jenkins และ devtools
 
-รันจาก terminal บนเครื่อง host หนึ่งครั้ง หาก network มีอยู่แล้วให้ข้ามคำสั่งสร้าง network:
+รันคำสั่งต่อไปนี้จาก terminal บน host โดยสร้าง network เพียงครั้งเดียว:
 
 ```bash
 docker network create cicd-net
@@ -78,34 +64,9 @@ docker run -d --name jenkins --network cicd-net --restart unless-stopped -p 127.
 docker ps
 ```
 
-image `tuchsanai/devtools:2569_1` รัน Docker-in-Docker (`dockerd`) และต้องใช้
-`--privileged` เพื่อให้ daemon ตั้งค่า iptables/network ได้ ค่านี้ให้สิทธิ์สูงมาก
-และเพิ่มความเสี่ยงต่อ Docker host; ใช้เฉพาะเครื่อง demo ที่เชื่อถือได้และอย่าเปิด
-container นี้ให้ผู้ใช้ที่ไม่เชื่อถือ หาก containers มีอยู่แล้ว `docker start` จะไม่
-เปลี่ยน privilege ของ container ที่สร้างไปแล้ว ต้อง recreate `devtools` ด้วย flag นี้
-ก่อน pipeline ใช้งาน Docker ได้
+หากมี network `cicd-net` อยู่แล้ว ให้ข้าม `docker network create cicd-net`; หาก containers มีอยู่แล้วให้ตรวจ configuration ก่อนใช้ `docker start` เพราะการ start ไม่สามารถเปลี่ยน port mapping หรือเพิ่ม `--privileged` ให้ container เดิมได้
 
-ถ้า `devtools` เดิมถูกสร้างโดยไม่มี `--privileged` ให้ recreate; Docker ไม่สามารถ
-เพิ่ม privilege ให้ container เดิมภายหลังได้ ตัวอย่างนี้เก็บ container เดิมไว้ชั่วคราว
-และนำ volume ของ `/var/lib/docker` มาใช้ซ้ำ:
-
-```bash
-docker stop devtools
-docker rename devtools devtools-old
-docker run -dit --name devtools --privileged --volumes-from devtools-old -p 127.0.0.1:2222:22 -p 80:80 -p 9090:9090 -p 3000:3000 --network cicd-net --tmpfs /run --restart unless-stopped tuchsanai/devtools:2569_1
-docker exec devtools docker info
-```
-
-ติดตั้ง public SSH key ใน `/root/.ssh/authorized_keys` ของ container ใหม่อีกครั้ง
-เพราะไฟล์ใน root filesystem ไม่ได้ถูกย้ายตาม `--volumes-from`; Jenkins จะ sync source
-กลับมาใน build ถัดไป และยืนยัน SSH host key ใหม่ผ่านช่องทางที่เชื่อถือได้ก่อนอัปเดต
-`known_hosts` ของ Jenkins เพราะ SSH host keys อาจเปลี่ยนเมื่อสร้าง container ใหม่
-คำสั่ง `docker info` ต้องแสดงข้อมูล `Server` โดยไม่มี error เชื่อมต่อ daemon
-อย่าลบ `devtools-old` หรือ volume เดิมจนกว่าจะตรวจสอบ container ใหม่และ pipeline ผ่านแล้ว
-การ bind Jenkins ที่ `127.0.0.1:8080` จำกัดการเข้าถึงผ่าน host port ไว้ในเครื่องนี้
-ส่วน ngrok จะเชื่อม Jenkins ผ่าน `cicd-net` หากมี Jenkins container เก่าที่ publish
-port 8080 ทุก interface การ `docker start` จะไม่เปลี่ยน port mapping; ให้ปิดช่องทาง
-ภายนอกด้วย firewall หรือสร้าง container ใหม่โดยเก็บ volume `jenkins_home` ไว้
+Image `tuchsanai/devtools:2569_1` เริ่ม Docker-in-Docker (`dockerd`) และต้องใช้ `--privileged` เพื่อให้ daemon ตั้งค่า iptables และ networking ได้ ตัวเลือกนี้ให้สิทธิ์สูงมากและเพิ่มความเสี่ยงต่อ Docker host จึงควรใช้เฉพาะสภาพแวดล้อม demo ที่เชื่อถือได้
 
 เปิด Jenkins ที่ <http://localhost:8080> และอ่าน initial admin password:
 
@@ -113,64 +74,60 @@ port 8080 ทุก interface การ `docker start` จะไม่เปล�
 docker exec jenkins cat /var/jenkins_home/secrets/initialAdminPassword
 ```
 
-ทำตามหน้า setup, สร้าง Jenkins admin และติดตั้ง plugins ตามหัวข้อก่อนหน้า
-ต้องตรวจว่า SSH server ทำงานอยู่ที่ port 22 ภายใน `devtools`; คำสั่งเริ่ม SSH
-ขึ้นกับการตั้งค่าของ image จึงให้ตรวจเอกสาร/การตั้งค่าของ image นี้
+ทำตามหน้า Jenkins setup เพื่อสร้างผู้ดูแลระบบและติดตั้ง plugins ที่ระบุไว้ในหัวข้อก่อนหน้า
 
-### การ clone source ใน devtools
+### การ clone source ใน devtools (ทางเลือก)
 
-เปิด shell เป็น root แล้ว clone repository ตามตัวอย่าง:
+Pipeline sync source จาก Jenkins ไปยัง `/root/Pet-Clinic-Booking-and-Appointment-System` ทุก build อยู่แล้ว การ clone บน `devtools` จึงจำเป็นเฉพาะเมื่อต้องการทดลองหรือดู source ด้วยตนเอง:
 
 ```bash
 docker exec -it --user root devtools sh
 ```
 
+ภายใน shell ของ `devtools`:
+
 ```sh
 git clone https://github.com/AnawinA/Pet-Clinic-Booking-and-Appointment-System.git /root/Pet-Clinic-Booking-and-Appointment-System
 ```
 
-Pipeline จะส่ง source revision ที่ checkout จาก Jenkins ไปยัง
-`/root/Pet-Clinic-Booking-and-Appointment-System` ทุก build ดังนั้นการ clone นี้
-มีประโยชน์สำหรับเตรียม/ทดลองใช้งานด้วยตนเอง ไม่ใช่แหล่ง source หลักที่ pipeline deploy
-
-### พอร์ตและการเข้าถึง
+### พอร์ตที่ใช้
 
 | Port | การเข้าถึงตัวอย่าง | บริการ |
 |---:|---|---|
-| 8080 | Host: `http://localhost:8080` | Jenkins |
-| 2222 | Host: `localhost:2222` | SSH ของ `devtools` ที่ map จาก port 22 |
-| 22 | Docker network: `devtools:22` | SSH ที่ Jenkins ใช้เชื่อม `devtools` |
-| 80 | Host: `http://localhost` | แอปผ่าน Nginx เมื่อ Docker networking publish ถึง host |
-| 3000 | Host: `http://localhost:3000` | Grafana เมื่อ publish ถึง host |
-| 9090 | Host: `http://localhost:9090` | Prometheus เมื่อ publish ถึง host |
+| 8080 | Host: `http://localhost:8080` | Jenkins; bind เฉพาะ host loopback |
+| 2222 | Host: `localhost:2222` | SSH port 22 ของ `devtools` |
+| 22 | Docker network: `devtools:22` | SSH จาก Jenkins ไป `devtools` |
+| 80 | Host: `http://localhost` | แอปผ่าน Nginx เมื่อ Docker networking ส่ง port ถึง host |
+| 3000 | Host: `http://localhost:3000` | Grafana เมื่อ port ถูก publish ถึง host |
+| 9090 | Host: `http://localhost:9090` | Prometheus เมื่อ port ถูก publish ถึง host |
+| 4040 | Host: `http://localhost:4040` | ngrok local status UI; bind เฉพาะ loopback |
 
-การ map port 80/3000/9090 ให้ container ชั้นนอก `devtools` **ไม่รับประกัน**
-ว่าพอร์ตของ services ที่รันจาก Docker daemon ซ้อนอยู่ภายในจะเข้าถึงได้จาก host
-ตรวจสอบว่า Compose ใช้ Docker daemon/network ที่ตั้งใจ และกำหนด port forwarding
-สำหรับเส้นทางจริงก่อนใช้งาน
+การ publish port 80, 3000 หรือ 9090 ที่ container `devtools` ชั้นนอกไม่ได้รับประกันว่าจะ publish port ของ services จาก Docker daemon ซ้อนอยู่ภายใน ตรวจสอบ Docker daemon/network ที่ Compose ใช้และตั้ง port forwarding ให้ตรงกับเส้นทางจริง
 
-## 4. สร้าง SSH key สำหรับ Jenkins
+## 4. ตั้งค่า SSH key สำหรับ Jenkins
 
-สร้าง key บนเครื่องที่เชื่อถือได้ ไม่สร้างไว้ใน repository หรือ container ที่อาจถูกลบ
-ใช้โปรแกรมสร้าง SSH key ที่เชื่อถือได้บนเครื่อง host แล้วเลือกชนิด key เป็น Ed25519
-ตั้งชื่อไฟล์ `jenkins_devtools` และบันทึกไว้นอก repository ในโฟลเดอร์ SSH
-ของผู้ใช้บนเครื่องนั้น ตั้ง passphrase เมื่อระบบถาม
+สร้าง SSH key บนเครื่อง host ที่เชื่อถือได้ด้วยเครื่องมือสร้าง SSH key เลือกชนิด Ed25519 ตั้งชื่อไฟล์ `jenkins_devtools` และเก็บไว้นอก repository ในโฟลเดอร์ SSH ของผู้ใช้ ตั้ง passphrase เมื่อระบบถาม
 
-ตั้ง passphrase เมื่อระบบถาม แล้วเก็บให้ปลอดภัย:
-
-- `jenkins_devtools` คือ private key สำหรับ Jenkins เท่านั้น ห้าม copy ไป `devtools`
-  หรือ commit ลง Git
+- `jenkins_devtools` คือ private key สำหรับ Jenkins เท่านั้น ห้าม copy ไป `devtools` หรือ commit ลง Git
 - `jenkins_devtools.pub` คือ public key ที่นำไปติดตั้งใน `devtools`
 
-เปิดไฟล์ public key (`jenkins_devtools.pub`) ด้วย text editor แล้วคัดลอกทั้งบรรทัด
-จากนั้นเปิด shell ใน `devtools` เป็น root, สร้าง `/root/.ssh` หากยังไม่มี,
-ตั้ง permission ของ directory เป็น `700`, วาง public key เป็นหนึ่งบรรทัดใหม่ท้ายไฟล์
-`/root/.ssh/authorized_keys` แล้วตั้ง permission ของไฟล์เป็น `600`
-ตรวจให้แน่ใจว่าไม่ได้คัดลอก private key (`jenkins_devtools`) ไปไว้ใน container
+เปิดไฟล์ `jenkins_devtools.pub` ด้วย text editor แล้วคัดลอกทั้งบรรทัด จากนั้นเปิด shell ใน `devtools` เป็น root:
 
-SSH server ต้องอนุญาต root public-key login (เช่น `PermitRootLogin prohibit-password`
-ตามเวอร์ชัน OpenSSH) และไม่เปิด root password login ตรวจสอบ config ก่อน reload/restart SSH
-เมื่อ recreate `devtools` ที่ไม่มี root home volume ต้องติดตั้ง public key ใหม่
+```bash
+docker exec -it --user root devtools sh
+```
+
+ภายใน `devtools` สร้าง SSH directory ตั้ง permission แล้วเพิ่ม public key โดยแทน placeholder ด้วยเนื้อหาจริงทั้งบรรทัดจาก `jenkins_devtools.pub`:
+
+```sh
+install -d -m 700 /root/.ssh
+printf '%s\n' 'PASTE_PUBLIC_KEY_LINE_HERE' >> /root/.ssh/authorized_keys
+chmod 600 /root/.ssh/authorized_keys
+```
+
+หลีกเลี่ยงการเพิ่ม key ซ้ำใน `authorized_keys` และอย่าคัดลอก private key (`jenkins_devtools`) เข้า container
+
+SSH server ของ `devtools` ต้องอนุญาต root public-key login เช่น `PermitRootLogin prohibit-password` ตามเวอร์ชัน OpenSSH และต้องไม่เปิด root password login ตรวจสอบ config ก่อน reload/restart SSH
 
 ### เพิ่ม private key ใน Jenkins
 
@@ -180,212 +137,208 @@ SSH server ต้องอนุญาต root public-key login (เช่น `P
 4. เลือก **Enter directly** แล้ววางเนื้อหาจากไฟล์ `jenkins_devtools`
 5. กรอก passphrase หากตั้งไว้
 6. ตั้ง Credential ID เป็น `devtools-ssh`
-7. จำกัดสิทธิ์การใช้งาน credential ให้เฉพาะ job ที่จำเป็น
+7. จำกัดสิทธิ์การใช้ credential ให้เฉพาะ job ที่จำเป็น
 
-ห้ามบันทึก private key หรือ passphrase ใน Jenkinsfile, command line, repository
-หรือ console log
+ห้ามบันทึก private key หรือ passphrase ใน Jenkinsfile, command line, repository หรือ console log
 
-### ตรวจสอบ SSH host key
+### ตรวจสอบและเพิ่ม SSH host key
 
-Pipeline ใช้ `StrictHostKeyChecking=yes` จึงต้องติดตั้ง host key ที่ยืนยันแล้ว
-ของ `devtools` ใน `known_hosts` ของ Jenkins agent ก่อน
-ให้ยืนยัน fingerprint ผ่านช่องทางที่เชื่อถือได้ก่อนเพิ่ม key; อย่าเชื่อถือผล
-`ssh-keyscan` เพียงอย่างเดียว และอย่าปิด host-key checking
+Jenkinsfile ใช้ `StrictHostKeyChecking=yes` จึงต้องมี host key ที่เชื่อถือได้ของ `devtools` ใน `known_hosts` ที่ agent ผู้รัน pipeline ใช้ การเพิ่ม host key เป็นการยืนยันตัวตนของ server และแยกจาก `devtools-ssh` ซึ่งเป็น client private key ที่ใช้ยืนยันตัวตนของ Jenkins ต่อ server
 
-ใน Docker network Jenkins ต้องเชื่อมไป `root@devtools` port 22 ไม่ใช่
-`localhost:2222` (port 2222 ใช้สำหรับการเชื่อมจาก host เท่านั้น)
+จาก terminal บน host เปิด shell ภายใน Jenkins container:
+
+```bash
+docker exec -it --user jenkins jenkins sh
+```
+
+ภายใน Jenkins container ตรวจตำแหน่ง known-hosts files และหา entry ของ `devtools`:
+
+```sh
+ssh -G root@devtools | grep -i knownhostsfile
+ssh-keygen -F devtools -f /var/jenkins_home/.ssh/known_hosts
+ssh-keygen -F devtools -f /etc/ssh/ssh_known_hosts
+exit
+```
+
+หาก `ssh-keygen -F` แสดง entry แปลว่าพบ host key ในไฟล์นั้น หากไม่พบให้ตรวจ `UserKnownHostsFile` และ `GlobalKnownHostsFile` จาก `ssh -G` แล้วตรวจ path ที่แสดง
+
+หากยังไม่มี key ให้เปรียบเทียบ fingerprint กับค่าที่ได้จากช่องทางที่เชื่อถือได้ก่อน:
+
+```bash
+docker exec devtools ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub
+```
+
+อย่าเชื่อถือผล `ssh-keyscan` เพียงอย่างเดียว หากไฟล์ Ed25519 ไม่มี ให้ตรวจว่ามี host key ชนิดใดอยู่ใน `/etc/ssh/` และใช้ public key ชนิดนั้นแทน
+
+หลังยืนยัน fingerprint แล้ว แสดง public host key บน host:
+
+```bash
+docker exec devtools cat /etc/ssh/ssh_host_ed25519_key.pub
+```
+
+คัดลอก public key ทั้งบรรทัด เปิด Jenkins shell เป็น root แล้วเพิ่มบรรทัด `devtools <public-key>` ลงใน `known_hosts` โดยแทน placeholder ด้วย public key จริง:
+
+```bash
+docker exec -it --user root jenkins sh
+```
+
+ภายใน Jenkins container:
+
+```sh
+install -d -m 700 -o jenkins -g jenkins /var/jenkins_home/.ssh
+printf '%s\n' 'devtools PASTE_PUBLIC_KEY_LINE_HERE' >> /var/jenkins_home/.ssh/known_hosts
+chown jenkins:jenkins /var/jenkins_home/.ssh /var/jenkins_home/.ssh/known_hosts
+chmod 700 /var/jenkins_home/.ssh
+chmod 600 /var/jenkins_home/.ssh/known_hosts
+```
+
+ออกจาก shell แล้วตรวจ entry จาก terminal บน host:
+
+```bash
+docker exec --user jenkins jenkins ssh-keygen -F devtools -f /var/jenkins_home/.ssh/known_hosts
+```
+
+หาก Jenkins ใช้ agent แยกจาก controller ให้ติดตั้ง key ใน agent ที่รัน job แทน container `jenkins` หากสร้าง `devtools` ใหม่และ host key เปลี่ยน ให้ยืนยัน fingerprint ใหม่ ลบ entry เก่า (`ssh-keygen -R devtools -f /var/jenkins_home/.ssh/known_hosts`) แล้วเพิ่ม public key ใหม่
+
+จาก Docker network Jenkins ต้องเชื่อม `root@devtools` ที่ port 22 ไม่ใช่ `localhost:2222`; port 2222 ใช้สำหรับเชื่อมจาก host เท่านั้น
 
 ## 5. เพิ่ม Jenkins credentials
 
-ไปที่ **Manage Jenkins → Credentials** แล้วเพิ่ม credentials ตาม ID ที่ Pipeline
-และการตั้งค่า GitHub webhook ใช้:
+ไปที่ **Manage Jenkins → Credentials** แล้วเพิ่ม credentials ตาม ID ที่ pipeline หรือ GitHub webhook ใช้:
 
-| Credential ID | ประเภท | ค่า/การใช้งาน |
+| Credential ID | ประเภท | ค่าและการใช้งาน |
 |---|---|---|
-| `petcare-jwt-secret` | Secret text | secret สำหรับลงนาม JWT ใน CI |
-| `petcare-postgres-password` | Secret text | รหัสผ่าน PostgreSQL; ใช้เฉพาะ `A-Z`, `a-z`, ตัวเลข, `.`, `_`, `~`, `-` |
-| `petcare-grafana-password` | Secret text | รหัสผ่าน Grafana admin ใน CI |
+| `petcare-jwt-secret` | Secret text | Secret สำหรับลงนาม JWT ใน CI |
+| `petcare-postgres-password` | Secret text | PostgreSQL password; ใช้เฉพาะ `A-Z`, `a-z`, ตัวเลข, `.`, `_`, `~`, `-` |
+| `petcare-grafana-password` | Secret text | Grafana admin password ใน CI |
 | `dockerhub` | Username with password | Docker Hub username และ access token ในช่อง password |
-| `devtools-ssh` | SSH Username with private key | `root` และ private key ที่สร้างในขั้นตอนก่อนหน้า |
-| `github-webhook-secret` | Secret text | shared secret สำหรับตรวจสอบ GitHub webhook; ตั้งค่าซ้ำใน GitHub plugin และ GitHub repository |
+| `devtools-ssh` | SSH Username with private key | Username `root` และ private key สำหรับ SSH เข้า `devtools` |
+| `github-webhook-secret` | Secret text | Shared secret ที่ตั้งซ้ำใน Jenkins GitHub plugin และ GitHub webhook |
 
-รหัสผ่าน PostgreSQL ถูกฝังตรงใน database URL ของ Compose จึงต้องใช้ตัวอักษร
-URL-safe ตามรายการด้านบน มิฉะนั้น pipeline จะหยุดพร้อม error
+`POSTGRES_PASSWORD` ถูกฝังตรงใน database URL ของ Compose จึงต้องใช้เฉพาะตัวอักษร URL-safe ตามที่ระบุ มิฉะนั้น pipeline จะหยุดพร้อม error
 
-เนื่องจาก repository เป็น public จึงไม่ต้องใช้ GitHub token หรือ SCM credential
-เพื่อให้ Jenkins อ่าน repository สำหรับ `checkout scm`
+Repository เป็น public จึงไม่ต้องใช้ GitHub token หรือ SCM credential สำหรับ `checkout scm` ใช้ Docker Hub access token แทนรหัสผ่านบัญชี และอย่าใส่ secrets ลงใน Jenkinsfile
 
 ## 6. สร้าง Jenkins Pipeline job
 
-1. เลือก **New Item** แล้วเลือกชนิด **Pipeline**
+1. เลือก **New Item** แล้วสร้าง job ชนิด **Pipeline**
 2. ใน **Pipeline → Definition** เลือก **Pipeline script from SCM**
-3. เลือก Git และกรอก URL ของ public repository:
-   `https://github.com/AnawinA/Pet-Clinic-Booking-and-Appointment-System.git`
+3. เลือก Git และกรอก repository URL `https://github.com/AnawinA/Pet-Clinic-Booking-and-Appointment-System.git`
 4. กำหนด branch ที่ต้องการให้ deploy; repository สาธารณะนี้ไม่ต้องใส่ SCM credential
 5. ตั้ง **Script Path** เป็น `Jenkinsfile`
-6. เปิด **GitHub hook trigger for GITScm polling**
-7. บันทึก แล้วตรวจว่า job เข้าถึง credentials ที่ Pipeline ใช้ได้
-8. ตรวจว่า Jenkins agent มี `git`, `tar`, `ssh` และ `known_hosts` ที่ยืนยันแล้ว
-
-สามารถใช้ Multibranch Pipeline ได้ แต่ต้องตั้ง branch discovery ให้เหมาะสมกับ branch
-ที่อนุญาต deploy
+6. เปิด **GitHub hook trigger for GITScm polling** หากจำเป็นตาม job type/plugin version
+7. บันทึก แล้วตรวจว่า job เข้าถึง Jenkins credentials ที่ pipeline ใช้ได้
+8. ตรวจว่า Jenkins agent มี `git`, `tar`, `ssh` และ host key ที่ยืนยันแล้วใน `known_hosts`
 
 ## 7. เปิด Jenkins localhost ด้วย ngrok
 
-GitHub เข้าถึง `localhost:8080` บนเครื่องของเราไม่ได้ จึงต้องเปิด HTTPS tunnel
-จาก ngrok ไปยัง Jenkins container ผ่าน Docker network `cicd-net`
+GitHub เข้าถึง `localhost:8080` บนเครื่องเราไม่ได้ จึงต้องเปิด HTTPS tunnel จาก ngrok ไปยัง Jenkins container ผ่าน Docker network `cicd-net`
 
-1. สมัคร/เข้าสู่ระบบ ngrok แล้วคัดลอก **authtoken** จาก dashboard
-   และ dev domain ที่บัญชีจัดสรรให้ เก็บ authtoken เป็นความลับ
-2. สร้างโฟลเดอร์ `ngrok` บน host นอก repository หรือเพิ่ม `ngrok/` ใน `.gitignore`
-   แล้วสร้างไฟล์ `traffic-policy.yml` ภายในด้วยเนื้อหานี้:
+1. สมัครหรือเข้าสู่ระบบ ngrok แล้วคัดลอก authtoken จาก dashboard และ dev domain ที่บัญชีจัดสรรให้ เก็บ authtoken เป็นความลับ
+2. สร้างโฟลเดอร์ `ngrok` บน host นอก repository แล้วสร้างไฟล์ `traffic-policy.yml` ภายในด้วยเนื้อหาต่อไปนี้:
 
-   ```yaml
-   on_http_request:
-     - name: allow-github-webhook-only
-       expressions:
-         - "!(req.method == 'POST' && req.url.path == '/github-webhook/')"
-       actions:
-         - type: custom-response
-           config:
-             status_code: 403
-             body: "Forbidden"
-   ```
+```yaml
+on_http_request:
+  - name: allow-github-webhook-only
+    expressions:
+      - "!(req.method == 'POST' && req.url.path == '/github-webhook/')"
+    actions:
+      - type: custom-response
+        config:
+          status_code: 403
+          body: "Forbidden"
+```
 
-   Policy นี้อนุญาตเฉพาะ `POST /github-webhook/` และตอบ `403` สำหรับ path/method
-   อื่นก่อน request จะถึง Jenkins เป็นชั้นป้องกันเพิ่มเติม ไม่ใช่การทดแทน webhook secret
-3. ตั้ง `NGROK_AUTHTOKEN` และเริ่ม container จาก terminal บน host โดยเลือกคำสั่ง
-   ตามระบบปฏิบัติการ คำสั่งจะถาม token แบบไม่แสดงค่าที่พิมพ์ และไม่ใส่ token
-   ใน command history แทน `YOUR_NGROK_DOMAIN` ด้วย domain จาก ngrok
-   และแก้ path ของโฟลเดอร์ให้ตรงกับตำแหน่ง `traffic-policy.yml`
+Policy นี้อนุญาตเฉพาะ `POST /github-webhook/` และตอบ `403` สำหรับ path หรือ method อื่นก่อน request จะถึง Jenkins เป็นชั้นป้องกันเพิ่มเติม ไม่ใช่สิ่งทดแทน webhook secret หรือ Jenkins authentication
 
-   **Windows PowerShell** — ตัวอย่างโฟลเดอร์ policy คือ
-   `C:\Users\USER\ngrok-config` (ใน Docker mount ใช้ `/` ใน drive path):
+### ตั้ง NGROK_AUTHTOKEN และเริ่ม ngrok
 
-   ```powershell
-   $secure = Read-Host "ngrok authtoken" -AsSecureString; $env:NGROK_AUTHTOKEN = (New-Object System.Net.NetworkCredential("", $secure)).Password; docker run -d --name ngrok --network cicd-net --restart unless-stopped -p 127.0.0.1:4040:4040 -e NGROK_AUTHTOKEN --mount "type=bind,source=C:/Users/USER/ngrok-config,target=/etc/ngrok,readonly" ngrok/ngrok:latest http http://jenkins:8080 --url https://YOUR_NGROK_DOMAIN --traffic-policy-file /etc/ngrok/traffic-policy.yml --log stdout; Remove-Item Env:NGROK_AUTHTOKEN
-   ```
+แทน `YOUR_NGROK_DOMAIN` ด้วย dev domain ของบัญชี ngrok และเปลี่ยน path ของโฟลเดอร์ให้ตรงกับตำแหน่งที่เก็บ `traffic-policy.yml` คำสั่งจะรับ token แบบไม่แสดงค่าที่พิมพ์และไม่ใส่ token ตรง ๆ ใน command history
 
-   **Linux shell (bash)** — เปลี่ยน `/home/USER/ngrok-config` เป็น absolute path
-   ของโฟลเดอร์ที่มี `traffic-policy.yml`:
+**Windows PowerShell** :
 
-   ```bash
-   read -rsp "ngrok authtoken: " NGROK_AUTHTOKEN; export NGROK_AUTHTOKEN; printf '\n'; docker run -d --name ngrok --network cicd-net --restart unless-stopped -p 127.0.0.1:4040:4040 -e NGROK_AUTHTOKEN --mount "type=bind,source=/home/USER/ngrok-config,target=/etc/ngrok,readonly" ngrok/ngrok:latest http http://jenkins:8080 --url https://YOUR_NGROK_DOMAIN --traffic-policy-file /etc/ngrok/traffic-policy.yml --log stdout; unset NGROK_AUTHTOKEN
-   ```
+```powershell
+$secure = Read-Host "ngrok authtoken" -AsSecureString; $env:NGROK_AUTHTOKEN = (New-Object System.Net.NetworkCredential("", $secure)).Password; docker run -d --name ngrok --network cicd-net --restart unless-stopped -p 127.0.0.1:4040:4040 -e NGROK_AUTHTOKEN --mount "type=bind,source=<ABSOLUTE_PATH_TO_TRAFFIC_POLICY_FOLDER>,target=/etc/ngrok,readonly" ngrok/ngrok:latest http http://jenkins:8080 --url https://<YOUR_NGROK_DOMAIN> --traffic-policy-file /etc/ngrok/traffic-policy.yml --log stdout; Remove-Item Env:NGROK_AUTHTOKEN
+```
 
-   คำสั่ง `-e NGROK_AUTHTOKEN` ส่งค่าจาก environment ปัจจุบันเข้า container;
-   `--mount` ต้องใส่ quotes ทั้งก้อนและใช้ path เต็มของโฟลเดอร์ ไม่ใช่ชื่อไฟล์
-   mount นี้เป็น read-only ส่วน port `4040` ผูกกับ loopback ของ host เพื่อให้ตรวจ
-   status UI ได้เฉพาะในเครื่อง Docker เก็บ environment ของ container ใน metadata
-   ด้วย ดังนั้นผู้ที่เข้าถึง Docker daemon อาจอ่าน token ได้ ให้จำกัดสิทธิ์ Docker
-   และอย่าแชร์ `docker inspect` output
-4. ตรวจว่า container ทำงานและไม่มี error:
+**Linux shell (bash)**
 
-   ```bash
-   docker ps --filter name=ngrok
-   docker logs --tail=50 ngrok
-   ```
+```bash
+read -rsp "ngrok authtoken: " NGROK_AUTHTOKEN; export NGROK_AUTHTOKEN; printf '\n'; docker run -d --name ngrok --network cicd-net --restart unless-stopped -p 127.0.0.1:4040:4040 -e NGROK_AUTHTOKEN --mount "type=bind,source=<ABSOLUTE_PATH_TO_TRAFFIC_POLICY_FOLDER>,target=/etc/ngrok,readonly" ngrok/ngrok:latest http http://jenkins:8080 --url https://<YOUR_NGROK_DOMAIN> --traffic-policy-file /etc/ngrok/traffic-policy.yml --log stdout; unset NGROK_AUTHTOKEN
+```
 
-   เปิด <http://localhost:4040> เพื่อตรวจว่า endpoint online และมี Traffic Policy
-   ทำงานอยู่ หาก hostname เปลี่ยนหลังเริ่ม tunnel ใหม่ ให้อัปเดต GitHub webhook URL
-   ตาม domain ที่ใช้งานจริงและเลือกใช้ ngrok domain แบบคงที่ถ้าบัญชีรองรับ
-   การเปิด domain เปล่าด้วย browser เป็น `GET` และได้ `403` ถือว่าถูกต้องตาม policy;
-   ใช้ GitHub webhook delivery เพื่อตรวจสอบ request จริง
-5. คง ngrok container ให้ทำงานขณะใช้ webhook เมื่อเลิกใช้งานให้หยุด tunnel:
+ตัวเลือก `-e NGROK_AUTHTOKEN` ส่งค่าจาก environment ปัจจุบันเข้า container ส่วน `--mount` ใช้ path เต็มของโฟลเดอร์และ mount แบบ read-only; Docker เก็บ environment ของ container ใน metadata จึงจำกัดสิทธิ์ผู้ที่เข้าถึง Docker daemon ได้
 
-   ```bash
-   docker stop ngrok
-   ```
+ตรวจว่า ngrok container ทำงานและไม่มี error:
 
-> **ความปลอดภัย:** HTTPS URL นี้เปิด endpoint เข้าจากอินเทอร์เน็ต แม้ Traffic Policy
-> จะกัน path อื่นก็ตาม ให้เปลี่ยนรหัสผ่าน Jenkins เริ่มต้น, เปิดใช้ Jenkins authentication,
-> ตั้ง webhook shared secret ตามขั้นตอนถัดไป และอย่าเปิด Jenkins แบบ anonymous
+```bash
+docker ps --filter name=ngrok
+docker logs --tail=50 ngrok
+```
+
+เปิด <http://localhost:4040> เพื่อตรวจว่า endpoint online และ Traffic Policy ทำงาน การเปิด HTTPS domain ใน browser เป็น `GET` และได้ `403` ถือว่าถูกต้องตาม policy; ใช้ GitHub webhook delivery เพื่อตรวจสอบ request จริง
+
+คง ngrok container ให้ทำงานขณะใช้ webhook เมื่อเลิกใช้งานให้หยุด tunnel:
+
+```bash
+docker stop ngrok
+```
+
 
 ## 8. ตั้ง GitHub push webhook และ shared secret
 
-Jenkins ต้องรับ webhook ผ่าน ngrok domain ที่ GitHub มองเห็น ไม่ใช้ `localhost`
-หรือ Docker-only address
+ก่อนสร้าง webhook ให้ตั้ง Jenkins URL ใน **Manage Jenkins → System** เป็น `https://YOUR_NGROK_DOMAIN/` เพื่อให้ URL ที่ Jenkins แสดงใช้ HTTPS domain
 
-ก่อนตั้ง webhook ให้ตั้ง Jenkins URL ใน **Manage Jenkins → System** เป็น
-`https://YOUR_NGROK_DOMAIN/` เพื่อให้ลิงก์ที่ Jenkins แสดงใช้ HTTPS domain นี้
-
-1. สร้างค่า secret แบบสุ่มที่คาดเดายากด้วย password manager หรือเครื่องมือสร้าง
-   secret ที่เชื่อถือได้ แล้วบันทึกไว้อย่างปลอดภัยเพื่อนำไปใส่ทั้งใน Jenkins และ GitHub
-2. ใน Jenkins ไปที่ **Manage Jenkins → Credentials** แล้วสร้าง credential:
-   - Kind: **Secret text**
-   - Secret: ค่า secret ที่สร้างไว้
-   - ID: `github-webhook-secret`
-   - Description: `GitHub webhook shared secret`
-3. ไปที่ **Manage Jenkins → System → GitHub → Advanced → Add shared secret**
-   เลือก credential `github-webhook-secret` เป็น Shared secret และคงอัลกอริทึม
-   SHA-256 จากนั้นบันทึก การใส่ secret เฉพาะใน GitHub โดยไม่ตั้งค่านี้ใน Jenkins
-   ไม่ได้ทำให้ Jenkins ตรวจสอบลายเซ็น
+1. สร้าง secret แบบสุ่มที่คาดเดายากด้วย password manager หรือเครื่องมือที่เชื่อถือได้ แล้วเก็บค่าไว้เพื่อใส่ทั้งใน Jenkins และ GitHub
+2. ใน **Manage Jenkins → Credentials** เพิ่ม credential ชนิด **Secret text** โดยตั้ง ID เป็น `github-webhook-secret`
+3. ไปที่ **Manage Jenkins → System → GitHub → Advanced → Add shared secret** แล้วเลือก `github-webhook-secret` เป็น Shared secret โดยคงอัลกอริทึม SHA-256
 4. เปิด GitHub repository → **Settings → Webhooks → Add webhook**
-5. ตั้ง Payload URL เป็น `https://YOUR_NGROK_DOMAIN/github-webhook/`
-   โดยต้องมี `/` ปิดท้าย
-6. เลือก Content type `application/json`, ใส่ secret ค่าเดียวกับ Jenkins,
-   เปิด SSL verification และเลือก **Just the push event**
-7. บันทึก webhook; GitHub จะส่ง ping ให้ ตรวจผลที่ **Recent Deliveries**
-8. ใน Jenkins job เปิด **GitHub hook trigger for GITScm polling**
-   หากจำเป็นตาม job type/plugin version
+5. ตั้ง Payload URL เป็น `https://YOUR_NGROK_DOMAIN/github-webhook/` โดยต้องมี slash ปิดท้าย
+6. ตั้ง Content type เป็น `application/json`, ใส่ secret ค่าเดียวกับ Jenkins, เปิด SSL verification และเลือก **Just the push event**
+7. บันทึก webhook แล้วตรวจผลใน **Recent Deliveries**
+8. ตรวจว่า Jenkins job เปิด **GitHub hook trigger for GITScm polling** หากจำเป็นตาม job type/plugin version
 
-`githubPush()` ใน Jenkinsfile เปิด trigger สำหรับ push แล้ว แต่ webhook ต้องส่งถึง
-Jenkins ได้จริงด้วย Public repository ทำให้ Jenkins อ่าน source ผ่าน anonymous
-HTTPS checkout ได้โดยไม่ต้องใช้ GitHub token; webhook secret ใช้ตรวจลายเซ็นของ
-webhook แยกจากสิทธิ์อ่าน repository
+`githubPush()` ใน Jenkinsfile กำหนด trigger สำหรับ push แล้ว แต่ GitHub ต้องเรียกถึง ngrok และ Jenkins ได้จริง การตั้ง secret เฉพาะใน GitHub โดยไม่ตั้ง Shared secret ใน Jenkins ไม่ได้ตรวจสอบลายเซ็นที่ฝั่ง Jenkins
 
-## 9. ขั้นตอนทำงานของ CI/CD
+## 9. ขั้นตอน CI/CD เมื่อมี push
 
-เมื่อมี push ไปยัง branch ที่ job เฝ้าดู Jenkins จะ:
+1. Jenkins checkout commit จาก GitHub และสร้าง image tag จาก 12 ตัวอักษรแรกของ commit
+2. Jenkins สร้าง environment files ชั่วคราวจาก Jenkins credentials
+3. Jenkins เชื่อมต่อ `devtools` ผ่าน SSH และ sync source revision ไปยัง `/root/Pet-Clinic-Booking-and-Appointment-System`
+4. `devtools` build backend และ Nginx images แล้วเริ่ม PostgreSQL สำหรับตรวจสอบ
+5. Pipeline รัน Ruff, mypy, Alembic migration, pytest และ Gitleaks
+6. เมื่อการตรวจผ่าน Jenkins login Docker Hub ด้วย `--password-stdin` แล้ว push images
+7. `devtools` pull images ที่เผยแพร่แล้วและ deploy ด้วย `docker compose up -d --no-build`
+8. Pipeline seed ข้อมูลตัวอย่างและตรวจ readiness, load balancing, login/availability และ Prometheus targets
+9. Pipeline ลบไฟล์ environment ชั่วคราวและ Docker Hub auth directory ส่วน runtime `.env` บน `devtools` คงอยู่ให้ Compose ใช้งาน
 
-1. Checkout source และหา 12 ตัวอักษรแรกของ commit เพื่อใช้เป็น image tag
-2. สร้าง environment files ชั่วคราวจาก Jenkins credentials
-3. SSH ไปยัง `devtools` และส่ง source ไปยัง directory ที่กำหนด
-4. Build images และเริ่ม PostgreSQL สำหรับตรวจสอบ
-5. รัน Ruff, mypy, Alembic migration, pytest และ Gitleaks
-6. หากผ่านทั้งหมด ให้ login Docker Hub โดยใช้ `--password-stdin` และ push images
-7. Pull images ที่เผยแพร่แล้วและ deploy ด้วย `docker compose up -d --no-build`
-8. Seed ข้อมูลตัวอย่างและรัน post-deployment checks:
-   readiness, load balancing, login/availability และ Prometheus targets
-9. ลบไฟล์ environment ชั่วคราวและ Docker Hub auth directory; runtime `.env`
-   บน `devtools` คงอยู่เพื่อให้ Compose ใช้งาน
+Jenkins build เฉพาะ backend และ Nginx เพราะ backend image ใช้ร่วมกันโดย `migrate`, `web1`, `web2` และ `worker`; Nginx image รวม static frontend assets และเป็นตัวเสิร์ฟหน้าเว็บกับ proxy API ส่วน PostgreSQL, Prometheus, Grafana และ monitoring services ใช้ prebuilt images
 
-ชื่อ image tags ที่คาดว่าจะเห็นใน Docker Hub:
+Docker Hub จะมี tags ต่อไปนี้ โดย `<dockerhub-user>` คือ Docker Hub username และ `<build-number>` คือ Jenkins build number:
 
 - `<dockerhub-user>/petcare-backend:<12-character-commit>`
 - `<dockerhub-user>/petcare-backend:build-<build-number>`
 - `<dockerhub-user>/petcare-nginx:<12-character-commit>`
 - `<dockerhub-user>/petcare-nginx:build-<build-number>`
 
-## 10. ทดสอบการทำงานและใช้งานแอป
+## 10. ตรวจสอบ pipeline และใช้งานแอป
 
-### ทดสอบ CI/CD
+หลัง push commit ให้ตรวจ GitHub webhook **Recent Deliveries** ว่าส่งสำเร็จ จากนั้นเปิด Jenkins build → **Console Output** และตรวจ stages `Checkout`, `Connect and Sync to devtools`, `Build & Verify`, `Publish to Docker Hub`, `Deploy` และ `Post-Deployment Verification`
 
-1. Push commit ไปยัง branch ที่ตั้งใน Jenkins job
-2. ตรวจ GitHub webhook **Recent Deliveries** ว่าส่งสำเร็จ
-3. เปิด Jenkins build → **Console Output** แล้วตรวจ stages:
-   `Checkout`, `Connect and Sync to devtools`, `Build & Verify`,
-   `Publish to Docker Hub`, `Deploy`, `Post-Deployment Verification`
-4. ตรวจ Docker Hub ว่ามีทั้ง commit tag และ `build-<number>` tag
-5. ตรวจ Compose services ที่ `devtools` และทดสอบ URL ที่เปิดจาก host ได้
+ตรวจ Docker Hub ว่ามี commit tag และ `build-<number>` tag สำหรับ backend และ Nginx แล้วตรวจ Compose services บน `devtools` และทดลองเปิด URL ที่ Docker networking ส่งถึง host
 
-### รันแอปด้วยตนเอง (โดยไม่รอ pipeline)
+### รันแอปด้วยตนเองโดยไม่ผ่าน Jenkins
 
-จาก root ของ repository บนเครื่องที่ใช้ Docker Compose:
+จาก root ของ repository สร้างสำเนา `.env.example` ชื่อ `.env` ด้วย file manager หรือเครื่องมือจัดการไฟล์ของระบบ จากนั้นตั้ง `POSTGRES_PASSWORD`, `JWT_SECRET` และ `GRAFANA_ADMIN_PASSWORD` เป็นค่าที่ไม่ซ้ำและเหมาะกับสภาพแวดล้อม ห้าม commit `.env`
 
-สร้างสำเนาของ `.env.example` ชื่อ `.env` ด้วย file manager หรือเครื่องมือจัดการไฟล์
-ที่ใช้อยู่ จากนั้นแก้ไข `.env` ตามคำแนะนำด้านล่าง
-
-แก้ `.env` ให้กำหนด `POSTGRES_PASSWORD`, `JWT_SECRET` และ `GRAFANA_ADMIN_PASSWORD`
-เป็นค่าไม่ซ้ำและเหมาะกับสภาพแวดล้อม ห้าม commit `.env` จากนั้นสั่ง:
+สั่ง build และเริ่ม services:
 
 ```bash
 docker compose up -d --build
 docker compose ps
 ```
 
-Compose จะรัน migration ก่อน backend พร้อมให้บริการ ตรวจ URL เหล่านี้เมื่อ port
-ถูก publish ถึงเครื่องที่ใช้:
+Compose จะรัน migration ก่อนเริ่ม backend ตรวจ endpoints ต่อไปนี้เมื่อ ports เข้าถึงจากเครื่องที่ใช้ได้:
 
 | URL | จุดประสงค์ |
 |---|---|
@@ -394,15 +347,13 @@ Compose จะรัน migration ก่อน backend พร้อมให้�
 | `http://localhost:3000` | Grafana |
 | `http://localhost:9090` | Prometheus |
 
-ข้อมูลเข้าใช้งานตัวอย่างมีให้หลัง seed:
+seed ข้อมูลตัวอย่างด้วยคำสั่งต่อไปนี้:
 
 ```bash
 docker compose run --rm web1 python -m scripts.seed
 ```
 
-บัญชีตัวอย่าง: `owner1@petcare.local`, `vet1@petcare.local`,
-`staff@petcare.local`; รหัสผ่านเริ่มต้นคือ `Petcare123!` ใช้เฉพาะ demo/test
-และเปลี่ยนหรือลบข้อมูลตัวอย่างก่อนเปิดใช้งานจริง
+บัญชีตัวอย่างคือ `owner1@petcare.local`, `vet1@petcare.local` และ `staff@petcare.local` โดยใช้รหัสผ่าน `Petcare123!` เฉพาะ demo/test; เปลี่ยนหรือลบข้อมูลตัวอย่างก่อนเปิดใช้งานจริง
 
 ดูสถานะและ logs:
 
@@ -420,33 +371,32 @@ docker compose down
 
 อย่าใช้ `docker compose down -v` เว้นแต่ตั้งใจลบข้อมูลใน volumes รวมถึงข้อมูล PostgreSQL
 
-### พอร์ตใช้งานใน Compose
+### Ports ของ Compose
 
-Compose กำหนด port `80` สำหรับ Nginx, `3000` สำหรับ Grafana และ `9090` สำหรับ
-Prometheus ส่วน PostgreSQL และ backend ไม่ได้ publish port ออกสู่ host โดยตรง
-การเข้าถึงจาก host ยังขึ้นกับ Docker daemon/network ที่ Compose ใช้
-โดยเฉพาะเมื่อรัน Compose ภายใน `devtools` ที่มี Docker daemon ซ้อนอยู่
+Compose publish port 80 สำหรับ Nginx, 3000 สำหรับ Grafana และ 9090 สำหรับ Prometheus; PostgreSQL และ backend ไม่ได้ publish port ออกสู่ host โดยตรง
 
-## 11. แก้ปัญหา
+เมื่อ Compose ใช้ Docker daemon ซ้อนอยู่ใน `devtools` การ publish port ใน Compose อาจไม่ทำให้ host เข้าถึง services ได้โดยอัตโนมัติ ต้องตรวจ network และ port forwarding ของ Docker daemon ที่ใช้งานจริง
 
-| อาการ | วิธีตรวจสอบ |
+## 11. แก้ปัญหาเบื้องต้น
+
+| อาการ | จุดตรวจสอบ |
 |---|---|
 | Jenkins ไม่เริ่ม build หลัง push | ตรวจ GitHub webhook Recent Deliveries, HTTPS URL, GitHub plugin, job trigger และ branch |
-| GitHub delivery ล้มเหลวหรือ ngrok endpoint offline | ตรวจ `docker ps` และ `docker logs ngrok`, authtoken, domain, network `cicd-net` และสถานะ Jenkins |
-| ngrok ส่ง `403` สำหรับ webhook | ตรวจ path `/github-webhook/` และ slash ปิดท้าย รวมถึง method `POST` ให้ตรง Traffic Policy |
-| GitHub webhook แจ้ง signature/secret ผิด | ตรวจว่า Jenkins credential `github-webhook-secret`, GitHub plugin Shared secret และ GitHub webhook ใช้ secret เดียวกัน |
-| `Could not resolve hostname devtools` หรือ SSH timeout | ให้ Jenkins agent และ `devtools` อยู่บน network เดียวกัน; ตรวจชื่อ DNS และ SSH port 22 |
-| `Host key verification failed` | ติดตั้ง host key ที่ยืนยัน fingerprint แล้วใน `known_hosts` ของ Jenkins agent |
-| `Permission denied (publickey)` | ตรวจ `devtools-ssh`, username `root`, passphrase, SSH server config และ permissions `authorized_keys` |
-| หา initial admin password ไม่เจอ | ตรวจว่า Jenkins เริ่มทำงานและ volume `jenkins_home` ถูกต้อง; อ่านไฟล์ด้วยคำสั่งในขั้นตอนเริ่ม Jenkins |
-| Docker/Compose ใช้งานไม่ได้ใน `devtools` | ตรวจ Docker daemon, สิทธิ์ root และ Compose v2.30+ |
-| Docker Hub push ไม่ผ่าน | ตรวจ ID `dockerhub`, token permissions และชื่อ repositories |
-| Pipeline ปฏิเสธ PostgreSQL password | เปลี่ยน credential ให้ใช้เฉพาะ URL-safe characters ตามรายการในหัวข้อ credentials |
-| Jenkins build ผ่านแต่เข้าแอปจาก host ไม่ได้ | ตรวจ port publishing และ Docker networking ของ daemon ที่ Compose ใช้; port ของ container ชั้นนอกอาจไม่ forward nested containers |
-| Post-deployment verification ล้มเหลว | ตรวจ `docker compose ps` และ logs ของ `web1`, `web2`, `worker`, `nginx`; ตรวจ health endpoint และ Prometheus targets |
-| SSH key หายหลัง recreate `devtools` | ติดตั้ง public key ใน `/root/.ssh/authorized_keys` ใหม่ หรือจัด persistent/provisioned storage อย่างปลอดภัย |
+| ngrok endpoint offline หรือส่ง request ไม่ถึง Jenkins | ตรวจ `docker ps`, `docker logs ngrok`, authtoken, domain, network `cicd-net` และสถานะ Jenkins |
+| ngrok ส่ง `403` ให้ webhook | ตรวจ path `/github-webhook/` รวม trailing slash และ method `POST` ให้ตรง Traffic Policy |
+| GitHub แจ้ง webhook signature/secret ผิด | ตรวจว่า Jenkins credential, GitHub plugin Shared secret และ GitHub webhook ใช้ secret เดียวกัน |
+| `Could not resolve hostname devtools` หรือ SSH timeout | ให้ Jenkins agent และ `devtools` อยู่ network เดียวกัน และตรวจ DNS/SSH port 22 |
+| `Host key verification failed` | ตรวจว่า host key ที่ยืนยัน fingerprint แล้วอยู่ใน `known_hosts` ของ agent ที่รัน pipeline |
+| `Permission denied (publickey)` | ตรวจ `devtools-ssh`, username `root`, passphrase, SSH server config และ permissions ของ `authorized_keys` |
+| ไม่มี initial admin password | ตรวจว่า Jenkins เริ่มทำงานและ volume `jenkins_home` ถูกต้อง แล้วอ่านไฟล์ตามคำสั่งในหัวข้อเริ่ม Jenkins |
+| Docker ใช้งานไม่ได้ใน `devtools` | รัน `docker exec devtools docker info`; image นี้ต้องเริ่มด้วย `--privileged` และ daemon ต้องพร้อม |
+| Docker Hub push ไม่ผ่าน | ตรวจ credential `dockerhub`, token permissions และชื่อ repositories |
+| Pipeline ปฏิเสธ PostgreSQL password | เปลี่ยน Jenkins credential ให้ใช้เฉพาะ URL-safe characters ตามตาราง credentials |
+| Deploy แล้วเข้าแอปจาก host ไม่ได้ | ตรวจ port publishing และ Docker networking ของ daemon ที่ Compose ใช้; port ของ container ชั้นนอกอาจไม่ forward nested containers |
+| Post-deployment verification ล้มเหลว | ตรวจ `docker compose ps`, logs ของ `web1`, `web2`, `worker`, `nginx`, health endpoint และ Prometheus targets |
+| SSH key หายหลัง recreate `devtools` | ติดตั้ง public key ใหม่ใน `/root/.ssh/authorized_keys` และยืนยัน/อัปเดต host key ที่ Jenkins |
 
-คำสั่งตรวจสอบ containers บน host:
+ตรวจ containers บน host:
 
 ```bash
 docker ps
@@ -454,32 +404,29 @@ docker logs --tail=100 jenkins
 docker logs --tail=100 devtools
 ```
 
-เมื่อ `POST /github-webhook/` ได้ HTTP `400` จาก request ทดสอบทั่วไปที่ไม่มี
-GitHub event headers อาจแปลว่า tunnel และ route ถึง Jenkins แล้ว ใช้หน้า GitHub
-**Recent Deliveries** ตรวจผลจริง อย่าถือ `400` เพียงอย่างเดียวว่า webhook ทำงานครบ
-
-คำสั่งตรวจสอบ Compose ให้รันใน shell ของ `devtools` ที่ root:
+ตรวจ Compose จาก shell ของ `devtools` ในฐานะ root:
 
 ```sh
 cd /root/Pet-Clinic-Booking-and-Appointment-System && docker compose ps
 ```
 
-ดูรายละเอียด recovery เพิ่มเติมใน [runbook](runbook.md)
+หาก `POST /github-webhook/` ที่ส่งด้วย request ทั่วไปได้ HTTP `400` ซึ่งไม่มี GitHub event headers อาจแปลว่า tunnel และ route ถึง Jenkins แล้ว ให้ใช้ GitHub **Recent Deliveries** ยืนยัน webhook จริง
+
+ดูแนวทาง recovery เพิ่มเติมใน [Runbook](runbook.md)
 
 ## 12. Checklist ก่อนใช้งานจริง
 
-- [ ] ngrok tunnel ชี้ไปยัง Jenkins ที่ถูกต้อง และเปิดเฉพาะ webhook path ผ่าน Traffic Policy
 - [ ] Jenkins ใช้ authentication ที่ปลอดภัยและไม่มี anonymous access
-- [ ] GitHub webhook ส่งถึง Jenkins ได้ และ branch ที่ deploy ถูกต้อง
-- [ ] Webhook shared secret ตั้งตรงกันทั้ง Jenkins GitHub plugin และ GitHub
+- [ ] ngrok tunnel ชี้ไปยัง Jenkins ที่ถูกต้องและจำกัดด้วย Traffic Policy
+- [ ] GitHub webhook ส่งถึง Jenkins ได้และเลือก branch ที่ถูกต้อง
+- [ ] Webhook shared secret ตรงกันทั้ง Jenkins GitHub plugin และ GitHub
 - [ ] Jenkins credentials มี ID ถูกต้องและจำกัด scope
-- [ ] GitHub repository ใช้ public read access โดยไม่ต้องเก็บ GitHub token ใน Jenkins
-- [ ] `devtools-ssh` ใช้ key เฉพาะ; root password login ปิดอยู่
-- [ ] SSH host key ได้รับการยืนยัน ไม่ได้ปิด StrictHostKeyChecking
+- [ ] `devtools-ssh` ใช้ key เฉพาะและปิด root password login
+- [ ] SSH host key ได้รับการยืนยันและเปิด `StrictHostKeyChecking`
 - [ ] Docker Hub token มีสิทธิ์เท่าที่จำเป็นและ repositories ถูกต้อง
-- [ ] secrets ไม่อยู่ใน Git, console output หรือไฟล์ที่ไม่จำเป็น
+- [ ] ไม่มี secrets ใน Git, console output หรือไฟล์ที่ไม่จำเป็น
 - [ ] มี backup ของข้อมูล PostgreSQL และแผน rollback ก่อน deployment
-- [ ] ตรวจแล้วว่าพอร์ตของแอปเข้าถึงได้จาก host/network ตามต้องการ
+- [ ] ตรวจแล้วว่า ports และ Docker networking ทำให้บริการเข้าถึงได้ตามต้องการ
 
 ## เอกสารที่เกี่ยวข้อง
 
