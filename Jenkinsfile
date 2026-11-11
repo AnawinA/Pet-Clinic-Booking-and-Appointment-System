@@ -73,7 +73,7 @@ pipeline {
                         ['GRAFANA_ADMIN_PASSWORD', env.GRAFANA_ADMIN_PASSWORD],
                         ['DOCKERHUB_NAMESPACE', env.DOCKERHUB_NAMESPACE],
                         ['IMAGE_TAG', env.IMAGE_TAG]
-                    ].collect { key, value -> dotenvLine(key, value) }.join('\n') + '\n'
+                    ].collect { entry -> dotenvLine(entry[0], entry[1]) }.join('\n') + '\n'
                     if (!(env.POSTGRES_PASSWORD ==~ /[A-Za-z0-9._~-]+/)) {
                         error 'The PostgreSQL password must use URL-safe characters for the database connection URL.'
                     }
