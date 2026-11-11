@@ -33,7 +33,7 @@ export default function AccountsPage() {
 
   return (
     <div>
-      <PageHeader title="สร้างบัญชีสัตวแพทย์ / เจ้าหน้าที่" subtitle="เฉพาะ STAFF เท่านั้นที่สร้างบัญชีทีมงานได้" />
+      <PageHeader title="สร้างบัญชีสัตวแพทย์ / เจ้าหน้าที่" subtitle="เฉพาะเจ้าหน้าที่เท่านั้นที่สร้างบัญชีทีมงานได้" />
 
       <form
         className="card grid max-w-2xl gap-3 sm:grid-cols-2"

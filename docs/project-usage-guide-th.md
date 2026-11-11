@@ -254,19 +254,31 @@ GitHub เข้าถึง `localhost:8080` บนเครื่องขอ�
 
    Policy นี้อนุญาตเฉพาะ `POST /github-webhook/` และตอบ `403` สำหรับ path/method
    อื่นก่อน request จะถึง Jenkins เป็นชั้นป้องกันเพิ่มเติม ไม่ใช่การทดแทน webhook secret
-3. ตั้ง authtoken ใน environment ของ terminal หรือ secret manager โดยไม่ใส่ค่า token
-   ลงใน command history แล้วรัน ngrok container จาก host หนึ่งบรรทัด
-   แทน `YOUR_NGROK_DOMAIN` ด้วย domain จาก ngrok และ
-   `ABSOLUTE_PATH_TO_NGROK_DIR` ด้วย path เต็มของโฟลเดอร์ที่มี `traffic-policy.yml`:
+3. ตั้ง `NGROK_AUTHTOKEN` และเริ่ม container จาก terminal บน host โดยเลือกคำสั่ง
+   ตามระบบปฏิบัติการ คำสั่งจะถาม token แบบไม่แสดงค่าที่พิมพ์ และไม่ใส่ token
+   ใน command history แทน `YOUR_NGROK_DOMAIN` ด้วย domain จาก ngrok
+   และแก้ path ของโฟลเดอร์ให้ตรงกับตำแหน่ง `traffic-policy.yml`
 
-   ```bash
-   docker run -d --name ngrok --network cicd-net --restart unless-stopped -p 127.0.0.1:4040:4040 -e NGROK_AUTHTOKEN --mount type=bind,source=ABSOLUTE_PATH_TO_NGROK_DIR,target=/etc/ngrok,readonly ngrok/ngrok:latest http http://jenkins:8080 --url https://YOUR_NGROK_DOMAIN --traffic-policy-file /etc/ngrok/traffic-policy.yml --log stdout
+   **Windows PowerShell** — ตัวอย่างโฟลเดอร์ policy คือ
+   `C:\Users\USER\ngrok-config` (ใน Docker mount ใช้ `/` ใน drive path):
+
+   ```powershell
+   $secure = Read-Host "ngrok authtoken" -AsSecureString; $env:NGROK_AUTHTOKEN = (New-Object System.Net.NetworkCredential("", $secure)).Password; docker run -d --name ngrok --network cicd-net --restart unless-stopped -p 127.0.0.1:4040:4040 -e NGROK_AUTHTOKEN --mount "type=bind,source=C:/Users/USER/ngrok-config,target=/etc/ngrok,readonly" ngrok/ngrok:latest http http://jenkins:8080 --url https://YOUR_NGROK_DOMAIN --traffic-policy-file /etc/ngrok/traffic-policy.yml --log stdout; Remove-Item Env:NGROK_AUTHTOKEN
    ```
 
-   คำสั่งนี้อาศัย environment variable `NGROK_AUTHTOKEN` ที่ตั้งไว้ใน terminal
-   และ mount policy แบบ read-only; ห้ามแทนค่าตัวแปรด้วย authtoken จริงใน command
-   Docker จะเก็บ environment ของ container ไว้ใน metadata; จำกัดผู้ที่เข้าถึง Docker
-   daemon ได้ Port `4040` ถูกผูกกับ loopback ของ host เพื่อให้ตรวจสถานะได้เฉพาะในเครื่อง
+   **Linux shell (bash)** — เปลี่ยน `/home/USER/ngrok-config` เป็น absolute path
+   ของโฟลเดอร์ที่มี `traffic-policy.yml`:
+
+   ```bash
+   read -rsp "ngrok authtoken: " NGROK_AUTHTOKEN; export NGROK_AUTHTOKEN; printf '\n'; docker run -d --name ngrok --network cicd-net --restart unless-stopped -p 127.0.0.1:4040:4040 -e NGROK_AUTHTOKEN --mount "type=bind,source=/home/USER/ngrok-config,target=/etc/ngrok,readonly" ngrok/ngrok:latest http http://jenkins:8080 --url https://YOUR_NGROK_DOMAIN --traffic-policy-file /etc/ngrok/traffic-policy.yml --log stdout; unset NGROK_AUTHTOKEN
+   ```
+
+   คำสั่ง `-e NGROK_AUTHTOKEN` ส่งค่าจาก environment ปัจจุบันเข้า container;
+   `--mount` ต้องใส่ quotes ทั้งก้อนและใช้ path เต็มของโฟลเดอร์ ไม่ใช่ชื่อไฟล์
+   mount นี้เป็น read-only ส่วน port `4040` ผูกกับ loopback ของ host เพื่อให้ตรวจ
+   status UI ได้เฉพาะในเครื่อง Docker เก็บ environment ของ container ใน metadata
+   ด้วย ดังนั้นผู้ที่เข้าถึง Docker daemon อาจอ่าน token ได้ ให้จำกัดสิทธิ์ Docker
+   และอย่าแชร์ `docker inspect` output
 4. ตรวจว่า container ทำงานและไม่มี error:
 
    ```bash
