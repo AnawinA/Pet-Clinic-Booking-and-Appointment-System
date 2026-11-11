@@ -11,6 +11,15 @@
 | CI/CD Pipeline | [`diagrams/cicd-pipeline.svg`](diagrams/cicd-pipeline.svg) | [`diagrams/cicd-pipeline.mmd`](diagrams/cicd-pipeline.mmd) |
 | Load Balancer | [`diagrams/load-balancer.svg`](diagrams/load-balancer.svg) | [`diagrams/load-balancer.mmd`](diagrams/load-balancer.mmd) |
 
+## ไดอะแกรม Architecture และ CI/CD ปัจจุบัน (draw.io)
+
+ไฟล์ draw.io ต่อไปนี้เป็นภาพรวมสถาปัตยกรรมและ Jenkins pipeline ตาม `docker-compose.yml` และ `Jenkinsfile` ปัจจุบัน โดยไม่แสดง ngrok:
+
+| แผนภาพ | ไฟล์ draw.io |
+|---|---|
+| Current application architecture | [`diagrams/petcare-current-architecture.drawio`](diagrams/petcare-current-architecture.drawio) |
+| Current Jenkins CI/CD pipeline | [`diagrams/petcare-current-pipeline.drawio`](diagrams/petcare-current-pipeline.drawio) |
+
 ---
 
 ## 1. Use Case Diagram

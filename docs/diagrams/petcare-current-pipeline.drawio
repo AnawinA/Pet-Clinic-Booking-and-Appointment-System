@@ -1,0 +1,76 @@
+<mxfile host="app.diagrams.net" modified="2026-11-11T17:45:00.000Z" agent="Copilot" version="24.7.17" type="device">
+  <diagram id="petcare-current-pipeline" name="Current CI-CD Pipeline">
+    <mxGraphModel dx="1820" dy="960" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1840" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="title" value="PET CLINIC - CURRENT JENKINS PIPELINE" style="text;html=1;align=left;verticalAlign=middle;fontStyle=1;fontSize=26;fontColor=#17365d;" vertex="1" parent="1">
+          <mxGeometry x="45" y="25" width="1000" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="trigger" value="GitHub push&#xa;push webhook + SCM checkout" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#333333;strokeWidth=2;fontStyle=1;fontSize=14;fontColor=#24292f;" vertex="1" parent="1">
+          <mxGeometry x="45" y="110" width="240" height="85" as="geometry"/>
+        </mxCell>
+        <mxCell id="jenkins" value="JENKINS CONTROLLER / AGENT&#xa;Jenkinsfile orchestrates stages; secrets are injected from Jenkins Credentials" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dcecff;strokeColor=#3b78a8;strokeWidth=2;fontStyle=1;fontSize=15;fontColor=#17365d;" vertex="1" parent="1">
+          <mxGeometry x="355" y="105" width="900" height="95" as="geometry"/>
+        </mxCell>
+        <mxCell id="sshTarget" value="Remote target: root@devtools:22&#xa;SSH key: devtools-ssh | StrictHostKeyChecking=yes" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#edf5ff;strokeColor=#3b78a8;fontSize=13;fontColor=#17365d;" vertex="1" parent="1">
+          <mxGeometry x="1330" y="105" width="400" height="95" as="geometry"/>
+        </mxCell>
+        <mxCell id="edgeTrigger" value="start pipeline" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#2f6ea5;fontSize=12;fontColor=#17365d;" edge="1" parent="1" source="trigger" target="jenkins">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edgeRemote" value="SSH remote execution" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#2f6ea5;fontSize=12;fontColor=#17365d;" edge="1" parent="1" source="jenkins" target="sshTarget">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="stageBand" value="Jenkins stages (each stage must succeed before the next stage runs)" style="swimlane;html=1;rounded=1;startSize=34;horizontal=1;fillColor=#eef8fb;swimlaneFillColor=#e1f4f8;strokeColor=#55b8c5;strokeWidth=2;fontStyle=1;fontSize=15;fontColor=#175f68;" vertex="1" parent="1">
+          <mxGeometry x="35" y="255" width="1760" height="405" as="geometry"/>
+        </mxCell>
+        <mxCell id="checkout" value="1. CHECKOUT&#xa;&#xa;• checkout scm&#xa;• derive 12-char commit tag&#xa;• validate Docker Hub namespace&#xa;• generate temporary CI env files" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#328db0;strokeWidth=2;fontSize=14;fontColor=#17365d;align=left;spacingLeft=12;" vertex="1" parent="stageBand">
+          <mxGeometry x="20" y="60" width="245" height="260" as="geometry"/>
+        </mxCell>
+        <mxCell id="sync" value="2. CONNECT &amp; SYNC&#xa;&#xa;• SSH / verify tools&#xa;• preflight docker info&#xa;• tar source to devtools&#xa;• write runtime and test env files" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#328db0;strokeWidth=2;fontSize=14;fontColor=#17365d;align=left;spacingLeft=12;" vertex="1" parent="stageBand">
+          <mxGeometry x="310" y="60" width="245" height="260" as="geometry"/>
+        </mxCell>
+        <mxCell id="buildTest" value="3. BUILD &amp; VERIFY&#xa;&#xa;• docker compose build&#xa;• start PostgreSQL + test DB&#xa;• Ruff + mypy + Alembic&#xa;• pytest&#xa;• Gitleaks scan" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#328db0;strokeWidth=2;fontSize=14;fontColor=#17365d;align=left;spacingLeft=12;" vertex="1" parent="stageBand">
+          <mxGeometry x="600" y="60" width="245" height="260" as="geometry"/>
+        </mxCell>
+        <mxCell id="publish" value="4. PUBLISH&#xa;&#xa;• Docker Hub login&#xa;  via --password-stdin&#xa;• push backend + nginx&#xa;• commit and build-number tags" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#328db0;strokeWidth=2;fontSize=14;fontColor=#17365d;align=left;spacingLeft=12;" vertex="1" parent="stageBand">
+          <mxGeometry x="890" y="60" width="245" height="260" as="geometry"/>
+        </mxCell>
+        <mxCell id="deploy" value="5. DEPLOY&#xa;&#xa;• pull web1 + nginx images&#xa;• compose up -d&#xa;• --no-build&#xa;• remove orphan services" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#328db0;strokeWidth=2;fontSize=14;fontColor=#17365d;align=left;spacingLeft=12;" vertex="1" parent="stageBand">
+          <mxGeometry x="1180" y="60" width="245" height="260" as="geometry"/>
+        </mxCell>
+        <mxCell id="verify" value="6. POST-DEPLOY CHECK&#xa;&#xa;• seed sample records&#xa;• health + load balancing&#xa;• login / availability&#xa;• Prometheus targets&#xa;• fail with recovery guidance" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffffff;strokeColor=#328db0;strokeWidth=2;fontSize=14;fontColor=#17365d;align=left;spacingLeft=12;" vertex="1" parent="stageBand">
+          <mxGeometry x="1470" y="60" width="265" height="260" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge12" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#17365d;" edge="1" parent="stageBand" source="checkout" target="sync">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge23" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#17365d;" edge="1" parent="stageBand" source="sync" target="buildTest">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge34" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#17365d;" edge="1" parent="stageBand" source="buildTest" target="publish">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge45" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#17365d;" edge="1" parent="stageBand" source="publish" target="deploy">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="edge56" style="edgeStyle=orthogonalEdgeStyle;rounded=0;html=1;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#17365d;" edge="1" parent="stageBand" source="deploy" target="verify">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="credentials" value="Jenkins Credentials&#xa;petcare-jwt-secret | petcare-postgres-password | petcare-grafana-password&#xa;devtools-ssh | dockerhub" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f1f5ff;strokeColor=#8198c9;dashed=1;fontSize=13;fontColor=#27385f;" vertex="1" parent="1">
+          <mxGeometry x="45" y="710" width="575" height="105" as="geometry"/>
+        </mxCell>
+        <mxCell id="registry" value="Docker Hub&#xa;petcare-backend + petcare-nginx&#xa;Tags: &lt;commit-12&gt; and build-&lt;number&gt;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e8f4ff;strokeColor=#2386c8;strokeWidth=2;fontStyle=1;fontSize=14;fontColor=#174f78;" vertex="1" parent="1">
+          <mxGeometry x="690" y="710" width="350" height="105" as="geometry"/>
+        </mxCell>
+        <mxCell id="cleanup" value="ALWAYS / CLEANUP&#xa;• collect Compose status + service logs&#xa;• Docker Hub logout; remove remote auth + test env&#xa;• delete temporary Jenkins env files" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f4f4f4;strokeColor=#7f8c8d;strokeWidth=2;fontSize=13;fontColor=#34495e;" vertex="1" parent="1">
+          <mxGeometry x="1110" y="710" width="630" height="105" as="geometry"/>
+        </mxCell>
+        <mxCell id="note" value="Only backend and Nginx images are built and published: Nginx bundles the React frontend; PostgreSQL, Prometheus, Grafana, and monitoring agents use prebuilt images." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff7e6;strokeColor=#c69a36;fontSize=13;fontColor=#72520d;" vertex="1" parent="1">
+          <mxGeometry x="45" y="850" width="1695" height="65" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
