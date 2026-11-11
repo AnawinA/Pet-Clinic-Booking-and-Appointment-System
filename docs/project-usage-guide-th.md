@@ -39,6 +39,20 @@ Jenkins agent ไม่จำเป็นต้องรัน Docker; คำส
 เนื่องจาก repository เป็น public จึงไม่ต้องใช้ GitHub token หรือ SCM credential
 เพื่อให้ Jenkins อ่าน repository สำหรับ `checkout scm`
 
+## 2. Clone repository
+
+บนเครื่อง host ให้เปิด terminal ไปยังโฟลเดอร์ที่ต้องการเก็บ source แล้ว clone
+repository สาธารณะ:
+
+```bash
+git clone https://github.com/AnawinA/Pet-Clinic-Booking-and-Appointment-System.git
+cd Pet-Clinic-Booking-and-Appointment-System
+```
+
+ใช้ working copy นี้สำหรับอ่าน/แก้ไขโค้ดหรือรันแอปด้วยตนเองในขั้นตอนต่อไป
+Jenkins Pipeline จะ checkout commit จาก GitHub เอง และส่ง source revision นั้นไปยัง
+`devtools`; ไม่จำเป็นต้อง clone ซ้ำบน `devtools` สำหรับการ deploy อัตโนมัติ
+
 ### Jenkins plugins
 
 ติดตั้งจาก **Manage Jenkins → Plugins**:
@@ -53,20 +67,41 @@ Jenkins agent ไม่จำเป็นต้องรัน Docker; คำส
 
 SSH Agent plugin ไม่ได้ติดตั้งคำสั่ง `ssh` ให้ Jenkins agent เอง
 
-## 2. เริ่ม Jenkins และ devtools
+## 3. เริ่ม Jenkins และ devtools
 
 รันจาก terminal บนเครื่อง host หนึ่งครั้ง หาก network มีอยู่แล้วให้ข้ามคำสั่งสร้าง network:
 
 ```bash
 docker network create cicd-net
-docker run -dit --name devtools -p 127.0.0.1:2222:22 -p 80:80 -p 9090:9090 -p 3000:3000 --network cicd-net --tmpfs /run --restart unless-stopped tuchsanai/devtools:2569_1
+docker run -dit --name devtools --privileged -p 127.0.0.1:2222:22 -p 80:80 -p 9090:9090 -p 3000:3000 --network cicd-net --tmpfs /run --restart unless-stopped tuchsanai/devtools:2569_1
 docker run -d --name jenkins --network cicd-net --restart unless-stopped -p 127.0.0.1:8080:8080 -v jenkins_home:/var/jenkins_home jenkins/jenkins:lts-jdk21
 docker ps
 ```
 
-ตัวอย่างนี้ไม่ใส่ `--privileged`; เพิ่มเฉพาะเมื่อ image ต้องการจริงและเข้าใจความเสี่ยง
-ของ privileged container แล้ว หาก containers มีอยู่แล้ว ให้ใช้ `docker start devtools jenkins`
-แทนการสร้างซ้ำ
+image `tuchsanai/devtools:2569_1` รัน Docker-in-Docker (`dockerd`) และต้องใช้
+`--privileged` เพื่อให้ daemon ตั้งค่า iptables/network ได้ ค่านี้ให้สิทธิ์สูงมาก
+และเพิ่มความเสี่ยงต่อ Docker host; ใช้เฉพาะเครื่อง demo ที่เชื่อถือได้และอย่าเปิด
+container นี้ให้ผู้ใช้ที่ไม่เชื่อถือ หาก containers มีอยู่แล้ว `docker start` จะไม่
+เปลี่ยน privilege ของ container ที่สร้างไปแล้ว ต้อง recreate `devtools` ด้วย flag นี้
+ก่อน pipeline ใช้งาน Docker ได้
+
+ถ้า `devtools` เดิมถูกสร้างโดยไม่มี `--privileged` ให้ recreate; Docker ไม่สามารถ
+เพิ่ม privilege ให้ container เดิมภายหลังได้ ตัวอย่างนี้เก็บ container เดิมไว้ชั่วคราว
+และนำ volume ของ `/var/lib/docker` มาใช้ซ้ำ:
+
+```bash
+docker stop devtools
+docker rename devtools devtools-old
+docker run -dit --name devtools --privileged --volumes-from devtools-old -p 127.0.0.1:2222:22 -p 80:80 -p 9090:9090 -p 3000:3000 --network cicd-net --tmpfs /run --restart unless-stopped tuchsanai/devtools:2569_1
+docker exec devtools docker info
+```
+
+ติดตั้ง public SSH key ใน `/root/.ssh/authorized_keys` ของ container ใหม่อีกครั้ง
+เพราะไฟล์ใน root filesystem ไม่ได้ถูกย้ายตาม `--volumes-from`; Jenkins จะ sync source
+กลับมาใน build ถัดไป และยืนยัน SSH host key ใหม่ผ่านช่องทางที่เชื่อถือได้ก่อนอัปเดต
+`known_hosts` ของ Jenkins เพราะ SSH host keys อาจเปลี่ยนเมื่อสร้าง container ใหม่
+คำสั่ง `docker info` ต้องแสดงข้อมูล `Server` โดยไม่มี error เชื่อมต่อ daemon
+อย่าลบ `devtools-old` หรือ volume เดิมจนกว่าจะตรวจสอบ container ใหม่และ pipeline ผ่านแล้ว
 การ bind Jenkins ที่ `127.0.0.1:8080` จำกัดการเข้าถึงผ่าน host port ไว้ในเครื่องนี้
 ส่วน ngrok จะเชื่อม Jenkins ผ่าน `cicd-net` หากมี Jenkins container เก่าที่ publish
 port 8080 ทุก interface การ `docker start` จะไม่เปลี่ยน port mapping; ให้ปิดช่องทาง
@@ -114,7 +149,7 @@ Pipeline จะส่ง source revision ที่ checkout จาก Jenkins �
 ตรวจสอบว่า Compose ใช้ Docker daemon/network ที่ตั้งใจ และกำหนด port forwarding
 สำหรับเส้นทางจริงก่อนใช้งาน
 
-## 3. สร้าง SSH key สำหรับ Jenkins
+## 4. สร้าง SSH key สำหรับ Jenkins
 
 สร้าง key บนเครื่องที่เชื่อถือได้ ไม่สร้างไว้ใน repository หรือ container ที่อาจถูกลบ
 ใช้โปรแกรมสร้าง SSH key ที่เชื่อถือได้บนเครื่อง host แล้วเลือกชนิด key เป็น Ed25519
@@ -160,7 +195,7 @@ Pipeline ใช้ `StrictHostKeyChecking=yes` จึงต้องติดต
 ใน Docker network Jenkins ต้องเชื่อมไป `root@devtools` port 22 ไม่ใช่
 `localhost:2222` (port 2222 ใช้สำหรับการเชื่อมจาก host เท่านั้น)
 
-## 4. เพิ่ม Jenkins credentials
+## 5. เพิ่ม Jenkins credentials
 
 ไปที่ **Manage Jenkins → Credentials** แล้วเพิ่ม credentials ตาม ID ที่ Pipeline
 และการตั้งค่า GitHub webhook ใช้:
@@ -180,7 +215,7 @@ URL-safe ตามรายการด้านบน มิฉะนั้น 
 เนื่องจาก repository เป็น public จึงไม่ต้องใช้ GitHub token หรือ SCM credential
 เพื่อให้ Jenkins อ่าน repository สำหรับ `checkout scm`
 
-## 5. สร้าง Jenkins Pipeline job
+## 6. สร้าง Jenkins Pipeline job
 
 1. เลือก **New Item** แล้วเลือกชนิด **Pipeline**
 2. ใน **Pipeline → Definition** เลือก **Pipeline script from SCM**
@@ -195,7 +230,7 @@ URL-safe ตามรายการด้านบน มิฉะนั้น 
 สามารถใช้ Multibranch Pipeline ได้ แต่ต้องตั้ง branch discovery ให้เหมาะสมกับ branch
 ที่อนุญาต deploy
 
-## 6. เปิด Jenkins localhost ด้วย ngrok
+## 7. เปิด Jenkins localhost ด้วย ngrok
 
 GitHub เข้าถึง `localhost:8080` บนเครื่องของเราไม่ได้ จึงต้องเปิด HTTPS tunnel
 จาก ngrok ไปยัง Jenkins container ผ่าน Docker network `cicd-net`
@@ -254,7 +289,7 @@ GitHub เข้าถึง `localhost:8080` บนเครื่องขอ�
 > จะกัน path อื่นก็ตาม ให้เปลี่ยนรหัสผ่าน Jenkins เริ่มต้น, เปิดใช้ Jenkins authentication,
 > ตั้ง webhook shared secret ตามขั้นตอนถัดไป และอย่าเปิด Jenkins แบบ anonymous
 
-## 7. ตั้ง GitHub push webhook และ shared secret
+## 8. ตั้ง GitHub push webhook และ shared secret
 
 Jenkins ต้องรับ webhook ผ่าน ngrok domain ที่ GitHub มองเห็น ไม่ใช้ `localhost`
 หรือ Docker-only address
@@ -287,7 +322,7 @@ Jenkins ได้จริงด้วย Public repository ทำให้ Jenk
 HTTPS checkout ได้โดยไม่ต้องใช้ GitHub token; webhook secret ใช้ตรวจลายเซ็นของ
 webhook แยกจากสิทธิ์อ่าน repository
 
-## 8. ขั้นตอนทำงานของ CI/CD
+## 9. ขั้นตอนทำงานของ CI/CD
 
 เมื่อมี push ไปยัง branch ที่ job เฝ้าดู Jenkins จะ:
 
@@ -310,7 +345,7 @@ webhook แยกจากสิทธิ์อ่าน repository
 - `<dockerhub-user>/petcare-nginx:<12-character-commit>`
 - `<dockerhub-user>/petcare-nginx:build-<build-number>`
 
-## 9. ทดสอบการทำงานและใช้งานแอป
+## 10. ทดสอบการทำงานและใช้งานแอป
 
 ### ทดสอบ CI/CD
 
@@ -380,7 +415,7 @@ Prometheus ส่วน PostgreSQL และ backend ไม่ได้ publish 
 การเข้าถึงจาก host ยังขึ้นกับ Docker daemon/network ที่ Compose ใช้
 โดยเฉพาะเมื่อรัน Compose ภายใน `devtools` ที่มี Docker daemon ซ้อนอยู่
 
-## 10. แก้ปัญหา
+## 11. แก้ปัญหา
 
 | อาการ | วิธีตรวจสอบ |
 |---|---|
@@ -419,7 +454,7 @@ cd /root/Pet-Clinic-Booking-and-Appointment-System && docker compose ps
 
 ดูรายละเอียด recovery เพิ่มเติมใน [runbook](runbook.md)
 
-## 11. Checklist ก่อนใช้งานจริง
+## 12. Checklist ก่อนใช้งานจริง
 
 - [ ] ngrok tunnel ชี้ไปยัง Jenkins ที่ถูกต้อง และเปิดเฉพาะ webhook path ผ่าน Traffic Policy
 - [ ] Jenkins ใช้ authentication ที่ปลอดภัยและไม่มี anonymous access
@@ -434,10 +469,8 @@ cd /root/Pet-Clinic-Booking-and-Appointment-System && docker compose ps
 - [ ] มี backup ของข้อมูล PostgreSQL และแผน rollback ก่อน deployment
 - [ ] ตรวจแล้วว่าพอร์ตของแอปเข้าถึงได้จาก host/network ตามต้องการ
 
-## เอกสารเดิม
+## เอกสารที่เกี่ยวข้อง
 
-คู่มือนี้รวมข้อมูลจากเอกสารเดิมโดยไม่ลบหรือแทนที่:
-
-- [คู่มือตั้งค่า CI/CD ภาษาไทย](cicd-setup-guide-th.md)
-- [รายละเอียด Jenkins CI/CD](jenkins-cicd.md)
-- [ตัวอย่าง Jenkins และ devtools](../demo_run.md)
+- [Runbook](runbook.md)
+- [คู่มือทดสอบด้วยตนเอง](manual-testing.md)
+- [แผนภาพระบบ](diagrams.md)

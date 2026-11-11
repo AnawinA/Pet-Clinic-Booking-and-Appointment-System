@@ -95,6 +95,7 @@ pipeline {
                     sh '''
                         set -e
                         $SSH_DEVTOOLS "hostname && whoami && docker --version && docker compose version"
+                        $SSH_DEVTOOLS "docker info >/dev/null 2>&1 || { echo 'Docker daemon is unavailable on devtools. Check /var/log/dockerd.log; this image requires --privileged for Docker-in-Docker.' >&2; exit 1; }"
                         chmod 600 .jenkins-compose.env .jenkins-test.env
                         $SSH_DEVTOOLS "mkdir -p '$REMOTE_DIR'"
                         tar --exclude=.git --exclude=.env --exclude='.env.*' --exclude=.jenkins-* --exclude=node_modules --exclude=dist -cf - . | $SSH_DEVTOOLS "tar -xf - -C '$REMOTE_DIR'"
@@ -143,12 +144,11 @@ pipeline {
                             set +x
                             printf '%s' "$DOCKERHUB_TOKEN" | $SSH_DEVTOOLS "umask 077; mkdir -p '$AUTH_DIR'; docker --config '$AUTH_DIR' login --username '$DOCKERHUB_USER' --password-stdin"
                             $SSH_DEVTOOLS "cd '$REMOTE_DIR' && DOCKER_CONFIG='$AUTH_DIR' docker compose push web1 nginx"
-                            $SSH_DEVTOOLS "AUTH_DIR='$AUTH_DIR' HUB_USER='$DOCKERHUB_USER' COMMIT_TAG='$COMMIT_TAG' BUILD_NUMBER='$BUILD_NUMBER' bash -se" <<'REMOTE'
-                            for image in petcare-backend petcare-nginx; do
-                                docker --config "$AUTH_DIR" tag "$HUB_USER/$image:$COMMIT_TAG" "$HUB_USER/$image:build-$BUILD_NUMBER"
-                                docker --config "$AUTH_DIR" push "$HUB_USER/$image:build-$BUILD_NUMBER"
-                            done
-                            REMOTE
+                            printf '%s\n' \
+                                'for image in petcare-backend petcare-nginx; do' \
+                                '    docker --config "$AUTH_DIR" tag "$HUB_USER/$image:$COMMIT_TAG" "$HUB_USER/$image:build-$BUILD_NUMBER"' \
+                                '    docker --config "$AUTH_DIR" push "$HUB_USER/$image:build-$BUILD_NUMBER"' \
+                                'done' | $SSH_DEVTOOLS "AUTH_DIR='$AUTH_DIR' HUB_USER='$DOCKERHUB_USER' COMMIT_TAG='$COMMIT_TAG' BUILD_NUMBER='$BUILD_NUMBER' bash -se"
                         '''.stripIndent()
                     }
                 }
