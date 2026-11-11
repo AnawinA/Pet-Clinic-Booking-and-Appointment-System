@@ -13,7 +13,7 @@ x-app: &app
   build:
     context: .
     dockerfile: backend/Dockerfile
-  image: petcare-backend:local
+  image: ${DOCKERHUB_NAMESPACE:-petcare}/petcare-backend:${IMAGE_TAG:-local}
   restart: unless-stopped
   labels:
     autoheal: "true"
@@ -102,7 +102,7 @@ services:
     build:
       context: .
       dockerfile: nginx/Dockerfile
-    image: petcare-nginx:local
+    image: ${DOCKERHUB_NAMESPACE:-petcare}/petcare-nginx:${IMAGE_TAG:-local}
     restart: unless-stopped
     labels:
       autoheal: "true"

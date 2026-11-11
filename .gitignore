@@ -1,6 +1,7 @@
 .env
 .env.*
 !.env.example
+.jenkins-*.env
 .last-good-tag
 __pycache__/
 *.py[cod]
