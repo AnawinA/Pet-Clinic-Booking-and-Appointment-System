@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, time
+from datetime import date, time, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
@@ -11,8 +11,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import bad_request, conflict, not_found
 from app.core.time import CLOSE_TIME, LAST_SLOT_START, OPEN_TIME
-from app.models import ACTIVE_STATUSES, Appointment, User, VetShift
-from app.schemas import ShiftOut
+from app.models import ACTIVE_STATUSES, Appointment, User, UserRole, VetShift
+from app.schemas import (
+    BulkShiftCreate,
+    BulkShiftExistingOut,
+    BulkShiftPreviewOut,
+    BulkShiftResultOut,
+    ShiftOut,
+)
 from app.services.audit_service import write_audit
 from app.services.common import get_vet
 
@@ -125,6 +131,220 @@ async def create_shift(
     )
     await session.commit()
     return serialize_shift(shift, vet.full_name)
+
+
+def _validate_date_range(start_date: date, end_date: date) -> int:
+    if end_date < start_date:
+        raise bad_request(
+            "INVALID_SHIFT_RANGE", "วันที่สิ้นสุดต้องไม่น้อยกว่าวันที่เริ่มต้น"
+        )
+    return (end_date - start_date).days + 1
+
+
+async def _resolve_bulk_vets(
+    session: AsyncSession, payload: BulkShiftCreate
+) -> list[User]:
+    if payload.all_vets:
+        vets = list(
+            (
+                await session.scalars(
+                    select(User)
+                    .where(User.role == UserRole.VET, User.is_active.is_(True))
+                    .order_by(User.full_name)
+                )
+            ).all()
+        )
+    else:
+        vet_ids = list(dict.fromkeys(payload.vet_ids))
+        if not vet_ids:
+            raise bad_request("VET_REQUIRED", "กรุณาเลือกสัตวแพทย์อย่างน้อย 1 คน")
+        vets = [await get_vet(session, vet_id) for vet_id in vet_ids]
+        vets.sort(key=lambda vet: vet.full_name)
+
+    if not vets:
+        raise bad_request("NO_ACTIVE_VETS", "ไม่พบสัตวแพทย์ที่ยังใช้งานอยู่")
+    return vets
+
+
+async def _range_shifts(
+    session: AsyncSession,
+    *,
+    vet_ids: list[uuid.UUID],
+    start_date: date,
+    end_date: date,
+    lock: bool = False,
+) -> list[tuple[VetShift, str]]:
+    stmt = (
+        select(VetShift, User.full_name)
+        .join(User, User.id == VetShift.vet_id)
+        .where(
+            VetShift.vet_id.in_(vet_ids),
+            VetShift.shift_date >= start_date,
+            VetShift.shift_date <= end_date,
+        )
+        .order_by(VetShift.shift_date, User.full_name, VetShift.start_time)
+    )
+    if lock:
+        stmt = stmt.with_for_update(of=VetShift)
+    rows = (await session.execute(stmt)).all()
+    return [(shift, vet_name) for shift, vet_name in rows]
+
+
+async def _appointment_counts(
+    session: AsyncSession, shift_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, int]:
+    if not shift_ids:
+        return {}
+    rows = await session.execute(
+        select(Appointment.shift_id, func.count(Appointment.id))
+        .where(Appointment.shift_id.in_(shift_ids))
+        .group_by(Appointment.shift_id)
+    )
+    return {shift_id: count for shift_id, count in rows.all()}
+
+
+def _bulk_existing_out(
+    shift: VetShift, vet_name: str, appointment_count: int
+) -> BulkShiftExistingOut:
+    return BulkShiftExistingOut(
+        shift_id=shift.id,
+        vet_id=shift.vet_id,
+        vet_name=vet_name,
+        shift_date=shift.shift_date,
+        start_time=shift.start_time.strftime("%H:%M"),
+        end_time=shift.end_time.strftime("%H:%M"),
+        appointment_count=appointment_count,
+    )
+
+
+async def preview_bulk_shifts(
+    session: AsyncSession, payload: BulkShiftCreate
+) -> BulkShiftPreviewOut:
+    start_time = _parse_time(payload.start_time)
+    end_time = _parse_time(payload.end_time)
+    _validate_window(start_time, end_time)
+    day_count = _validate_date_range(payload.start_date, payload.end_date)
+    vets = await _resolve_bulk_vets(session, payload)
+    rows = await _range_shifts(
+        session,
+        vet_ids=[vet.id for vet in vets],
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+    )
+    counts = await _appointment_counts(session, [shift.id for shift, _ in rows])
+    existing = [
+        _bulk_existing_out(shift, vet_name, counts.get(shift.id, 0))
+        for shift, vet_name in rows
+    ]
+    return BulkShiftPreviewOut(
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+        vet_count=len(vets),
+        day_count=day_count,
+        shifts_to_create=len(vets) * day_count,
+        existing_shifts=existing,
+        blocked_shifts=[item for item in existing if item.appointment_count > 0],
+    )
+
+
+async def create_bulk_shifts(
+    session: AsyncSession,
+    actor: User,
+    *,
+    payload: BulkShiftCreate,
+    request_id: str | None,
+) -> BulkShiftResultOut:
+    start_time = _parse_time(payload.start_time)
+    end_time = _parse_time(payload.end_time)
+    _validate_window(start_time, end_time)
+    day_count = _validate_date_range(payload.start_date, payload.end_date)
+    vets = await _resolve_bulk_vets(session, payload)
+
+    existing = await _range_shifts(
+        session,
+        vet_ids=[vet.id for vet in vets],
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+        lock=True,
+    )
+    counts = await _appointment_counts(session, [shift.id for shift, _ in existing])
+    blocked = [
+        _bulk_existing_out(shift, vet_name, counts.get(shift.id, 0))
+        for shift, vet_name in existing
+        if counts.get(shift.id, 0) > 0
+    ]
+    if blocked:
+        raise conflict(
+            "SHIFT_HAS_APPOINTMENTS",
+            "มีกะเดิมที่มีนัดหมายอยู่ จึงยังแทนที่กะช่วงนี้ไม่ได้",
+            {"shifts": [item.model_dump(mode="json") for item in blocked]},
+        )
+
+    for shift, vet_name in existing:
+        await write_audit(
+            session,
+            actor=actor,
+            entity_type="VET_SHIFT",
+            entity_id=shift.id,
+            action="SHIFT_DELETED",
+            before={
+                "vet_id": str(shift.vet_id),
+                "vet_name": vet_name,
+                "shift_date": str(shift.shift_date),
+                "start_time": shift.start_time.strftime("%H:%M"),
+                "end_time": shift.end_time.strftime("%H:%M"),
+                "reason": "BULK_SHIFT_REPLACED",
+            },
+            request_id=request_id,
+        )
+        await session.delete(shift)
+
+    # Free the EXCLUDE constraint ranges before inserting replacements.
+    await session.flush()
+
+    created: list[tuple[VetShift, str]] = []
+    for offset in range(day_count):
+        day = payload.start_date + timedelta(days=offset)
+        for vet in vets:
+            shift = VetShift(
+                vet_id=vet.id,
+                shift_date=day,
+                start_time=start_time,
+                end_time=end_time,
+                created_by=actor.id,
+            )
+            session.add(shift)
+            created.append((shift, vet.full_name))
+
+    try:
+        await session.flush()
+        for shift, _vet_name in created:
+            await write_audit(
+                session,
+                actor=actor,
+                entity_type="VET_SHIFT",
+                entity_id=shift.id,
+                action="SHIFT_CREATED",
+                after={
+                    "vet_id": str(shift.vet_id),
+                    "shift_date": str(shift.shift_date),
+                    "start_time": shift.start_time.strftime("%H:%M"),
+                    "end_time": shift.end_time.strftime("%H:%M"),
+                    "bulk": True,
+                },
+                request_id=request_id,
+            )
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        raise conflict("SHIFT_OVERLAP", "กะที่สร้างซ้อนกับกะที่มีอยู่") from exc
+
+    return BulkShiftResultOut(
+        created=len(created),
+        replaced=len(existing),
+        vet_count=len(vets),
+        day_count=day_count,
+    )
 
 
 async def list_shifts(

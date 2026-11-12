@@ -24,7 +24,7 @@ const NAV: Record<UserRole, { to: string; label: string; icon: IconName }[]> = {
     { to: "/staff/shifts", label: "จัดการกะ", icon: "clock" },
     { to: "/staff/reschedule-requests", label: "คำขอปรับเวลา", icon: "activity" },
     { to: "/staff/audit", label: "Audit Log", icon: "shield" },
-    { to: "/staff/accounts", label: "สร้างบัญชี", icon: "userPlus" },
+    { to: "/staff/accounts", label: "จัดการบัญชี", icon: "userPlus" },
     { to: "/staff/notifications", label: "แจ้งเตือน", icon: "bell" },
   ],
 };

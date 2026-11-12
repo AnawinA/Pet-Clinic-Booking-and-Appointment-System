@@ -12,7 +12,15 @@ from app.core.deps import require_roles
 from app.core.errors import forbidden
 from app.db.session import get_session
 from app.models import User, UserRole
-from app.schemas import MessageOut, ShiftCreate, ShiftOut, ShiftUpdate
+from app.schemas import (
+    BulkShiftCreate,
+    BulkShiftPreviewOut,
+    BulkShiftResultOut,
+    MessageOut,
+    ShiftCreate,
+    ShiftOut,
+    ShiftUpdate,
+)
 from app.services import shift_service
 
 router = APIRouter(prefix="/shifts", tags=["shifts"])
@@ -46,6 +54,30 @@ async def create_shift(
         day=payload.shift_date,
         start=payload.start_time,
         end=payload.end_time,
+        request_id=getattr(request.state, "request_id", None),
+    )
+
+
+@router.post("/bulk/preview", response_model=BulkShiftPreviewOut)
+async def preview_bulk_shift_creation(
+    payload: BulkShiftCreate,
+    staff: User = Depends(require_roles(UserRole.STAFF)),
+    session: AsyncSession = Depends(get_session),
+) -> BulkShiftPreviewOut:
+    return await shift_service.preview_bulk_shifts(session, payload)
+
+
+@router.post("/bulk", response_model=BulkShiftResultOut)
+async def create_bulk_shift_creation(
+    payload: BulkShiftCreate,
+    request: Request,
+    staff: User = Depends(require_roles(UserRole.STAFF)),
+    session: AsyncSession = Depends(get_session),
+) -> BulkShiftResultOut:
+    return await shift_service.create_bulk_shifts(
+        session,
+        staff,
+        payload=payload,
         request_id=getattr(request.state, "request_id", None),
     )
 

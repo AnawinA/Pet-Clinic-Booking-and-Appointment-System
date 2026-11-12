@@ -54,6 +54,23 @@ export interface Vet {
   full_name: string;
 }
 
+export interface StaffUpcomingAppointment {
+  appointment_id: string;
+  owner_id: string;
+  owner_name: string;
+  pet_id: string;
+  pet_name: string;
+  slot_start: string;
+  slot_end: string;
+  status: AppointmentStatus;
+}
+
+export interface StaffAppointmentResolution {
+  appointment_id: string;
+  action: "CANCEL" | "TRANSFER";
+  replacement_vet_id?: string | null;
+}
+
 export interface AvailabilitySlot {
   vet_id: string;
   vet_name: string;
@@ -127,6 +144,42 @@ export interface Shift {
   end_time: string;
   created_by: string;
   created_at: string;
+}
+
+export interface BulkShiftCreatePayload {
+  start_date: string;
+  end_date: string;
+  start_time: string;
+  end_time: string;
+  vet_ids: string[];
+  all_vets: boolean;
+}
+
+export interface BulkShiftExisting {
+  shift_id: string;
+  vet_id: string;
+  vet_name: string;
+  shift_date: string;
+  start_time: string;
+  end_time: string;
+  appointment_count: number;
+}
+
+export interface BulkShiftPreview {
+  start_date: string;
+  end_date: string;
+  vet_count: number;
+  day_count: number;
+  shifts_to_create: number;
+  existing_shifts: BulkShiftExisting[];
+  blocked_shifts: BulkShiftExisting[];
+}
+
+export interface BulkShiftResult {
+  created: number;
+  replaced: number;
+  vet_count: number;
+  day_count: number;
 }
 
 export interface TreatmentNote {

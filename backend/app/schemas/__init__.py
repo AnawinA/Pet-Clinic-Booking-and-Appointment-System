@@ -35,6 +35,27 @@ class StaffAccountRequest(RegisterRequest):
     role: str = Field(pattern=r"^(VET|STAFF)$")
 
 
+class StaffAppointmentResolution(ApiModel):
+    appointment_id: UUID
+    action: str = Field(pattern=r"^(CANCEL|TRANSFER)$")
+    replacement_vet_id: UUID | None = None
+
+
+class DeleteStaffAccountRequest(ApiModel):
+    appointments: list[StaffAppointmentResolution] = Field(default_factory=list)
+
+
+class StaffUpcomingAppointmentOut(ApiModel):
+    appointment_id: UUID
+    owner_id: UUID
+    owner_name: str
+    pet_id: UUID
+    pet_name: str
+    slot_start: datetime
+    slot_end: datetime
+    status: str
+
+
 class LoginRequest(ApiModel):
     email: str = Field(min_length=3, max_length=320)
     password: str = Field(min_length=1, max_length=128)
@@ -116,6 +137,42 @@ class ShiftOut(ApiModel):
     end_time: str
     created_by: UUID
     created_at: datetime
+
+
+class BulkShiftCreate(ApiModel):
+    start_date: date
+    end_date: date
+    start_time: str = Field(pattern=r"^([01][0-9]|2[0-3]):[0-5][0-9]$")
+    end_time: str = Field(pattern=r"^([01][0-9]|2[0-3]):[0-5][0-9]$")
+    vet_ids: list[UUID] = Field(default_factory=list)
+    all_vets: bool = False
+
+
+class BulkShiftExistingOut(ApiModel):
+    shift_id: UUID
+    vet_id: UUID
+    vet_name: str
+    shift_date: date
+    start_time: str
+    end_time: str
+    appointment_count: int
+
+
+class BulkShiftPreviewOut(ApiModel):
+    start_date: date
+    end_date: date
+    vet_count: int
+    day_count: int
+    shifts_to_create: int
+    existing_shifts: list[BulkShiftExistingOut]
+    blocked_shifts: list[BulkShiftExistingOut]
+
+
+class BulkShiftResultOut(ApiModel):
+    created: int
+    replaced: int
+    vet_count: int
+    day_count: int
 
 
 class VetOut(ApiModel):

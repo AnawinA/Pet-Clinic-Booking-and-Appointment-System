@@ -4,6 +4,9 @@ import type {
   AppointmentStatus,
   AuditLog,
   AvailabilitySlot,
+  BulkShiftCreatePayload,
+  BulkShiftPreview,
+  BulkShiftResult,
   ListResponse,
   Notification,
   Pet,
@@ -14,6 +17,8 @@ import type {
   RescheduleRequest,
   ScheduleEntry,
   Shift,
+  StaffAppointmentResolution,
+  StaffUpcomingAppointment,
   TokenResponse,
   TreatmentNote,
   User,
@@ -47,6 +52,13 @@ export const endpoints = {
       phone?: string | null;
       role: "VET" | "STAFF";
     }) => apiSend<User>("/auth/staff-accounts", "POST", payload),
+    listStaff: () => apiGet<User[]>("/auth/staff-accounts"),
+    upcomingAppointments: (id: string) =>
+      apiGet<StaffUpcomingAppointment[]>(`/auth/staff-accounts/${id}/upcoming-appointments`),
+    deleteStaff: (id: string, appointments: StaffAppointmentResolution[] = []) =>
+      apiSend<{ message: string }>(`/auth/staff-accounts/${id}`, "DELETE", {
+        appointments,
+      }),
   },
   pets: {
     list: () => apiGet<Pet[]>("/pets"),
@@ -130,6 +142,10 @@ export const endpoints = {
       start_time: string;
       end_time: string;
     }) => apiSend<Shift>("/shifts", "POST", payload),
+    bulkPreview: (payload: BulkShiftCreatePayload) =>
+      apiSend<BulkShiftPreview>("/shifts/bulk/preview", "POST", payload),
+    bulkCreate: (payload: BulkShiftCreatePayload) =>
+      apiSend<BulkShiftResult>("/shifts/bulk", "POST", payload),
     update: (id: string, payload: { shift_date?: string; start_time?: string; end_time?: string }) =>
       apiSend<Shift>(`/shifts/${id}`, "PATCH", payload),
     remove: (id: string) => apiSend<{ message: string }>(`/shifts/${id}`, "DELETE"),

@@ -21,6 +21,133 @@ async def test_staff_creates_shift(client, tokens, seeded):
     assert response.json()["start_time"] == "10:00"
 
 
+async def test_bulk_shift_preview_and_replace_range(client, tokens, seeded):
+    end_day = seeded["day"] + timedelta(days=2)
+    payload = {
+        "start_date": seeded["day"].isoformat(),
+        "end_date": end_day.isoformat(),
+        "start_time": "10:00",
+        "end_time": "12:00",
+        "all_vets": True,
+        "vet_ids": [],
+    }
+
+    preview = await client.post(
+        "/api/v1/shifts/bulk/preview",
+        headers=auth(tokens["STAFF"]),
+        json=payload,
+    )
+    assert preview.status_code == 200, preview.text
+    preview_data = preview.json()
+    assert preview_data["vet_count"] == 2
+    assert preview_data["day_count"] == 3
+    assert preview_data["shifts_to_create"] == 6
+    assert len(preview_data["existing_shifts"]) == 2
+    assert preview_data["blocked_shifts"] == []
+
+    created = await client.post(
+        "/api/v1/shifts/bulk",
+        headers=auth(tokens["STAFF"]),
+        json=payload,
+    )
+    assert created.status_code == 200, created.text
+    assert created.json()["created"] == 6
+    assert created.json()["replaced"] == 2
+
+    for offset in range(3):
+        day = seeded["day"] + timedelta(days=offset)
+        listed = await client.get(
+            "/api/v1/shifts",
+            params={"date": day.isoformat()},
+            headers=auth(tokens["STAFF"]),
+        )
+        assert listed.status_code == 200
+        assert len(listed.json()) == 2
+        assert all(item["start_time"] == "10:00" for item in listed.json())
+
+
+async def test_bulk_shift_blocks_replacement_when_existing_shift_has_appointment(
+    client, tokens, seeded
+):
+    await book(
+        client,
+        tokens["OWNER"],
+        pet_id=seeded["pet1_id"],
+        vet_id=seeded["vet1_id"],
+        day=seeded["day"],
+        hour=9,
+    )
+    payload = {
+        "start_date": seeded["day"].isoformat(),
+        "end_date": seeded["day"].isoformat(),
+        "start_time": "10:00",
+        "end_time": "12:00",
+        "all_vets": True,
+        "vet_ids": [],
+    }
+
+    preview = await client.post(
+        "/api/v1/shifts/bulk/preview",
+        headers=auth(tokens["STAFF"]),
+        json=payload,
+    )
+    assert preview.status_code == 200, preview.text
+    assert len(preview.json()["blocked_shifts"]) == 1
+
+    blocked = await client.post(
+        "/api/v1/shifts/bulk",
+        headers=auth(tokens["STAFF"]),
+        json=payload,
+    )
+    assert blocked.status_code == 409
+    assert blocked.json()["error"]["code"] == "SHIFT_HAS_APPOINTMENTS"
+
+    listed = await client.get(
+        "/api/v1/shifts",
+        params={"date": seeded["day"].isoformat()},
+        headers=auth(tokens["STAFF"]),
+    )
+    assert len(listed.json()) == 2
+    assert all(item["start_time"] == "09:00" for item in listed.json())
+
+
+async def test_bulk_shift_can_target_selected_vets(client, tokens, seeded):
+    payload = {
+        "start_date": seeded["day"].isoformat(),
+        "end_date": (seeded["day"] + timedelta(days=1)).isoformat(),
+        "start_time": "13:00",
+        "end_time": "15:00",
+        "all_vets": False,
+        "vet_ids": [str(seeded["vet1_id"])],
+    }
+    preview = await client.post(
+        "/api/v1/shifts/bulk/preview",
+        headers=auth(tokens["STAFF"]),
+        json=payload,
+    )
+    assert preview.status_code == 200, preview.text
+    assert preview.json()["vet_count"] == 1
+    assert preview.json()["shifts_to_create"] == 2
+
+    created = await client.post(
+        "/api/v1/shifts/bulk",
+        headers=auth(tokens["STAFF"]),
+        json=payload,
+    )
+    assert created.status_code == 200, created.text
+    assert created.json()["created"] == 2
+    assert created.json()["replaced"] == 1
+
+    listed = await client.get(
+        "/api/v1/shifts",
+        params={"date": seeded["day"].isoformat()},
+        headers=auth(tokens["STAFF"]),
+    )
+    by_vet = {item["vet_id"]: item for item in listed.json()}
+    assert by_vet[str(seeded["vet1_id"])]["start_time"] == "13:00"
+    assert by_vet[str(seeded["vet2_id"])]["start_time"] == "09:00"
+
+
 async def test_list_shifts_filters_by_date(client, tokens, seeded):
     other_day = seeded["day"] + timedelta(days=1)
     response = await client.get(

@@ -27,6 +27,7 @@ flowchart LR
     UC14(("เลื่อน / สลับ /<br/>โอนเคส"))
     UC15(("จัดการกะ<br/>สัตวแพทย์"))
     UC16(("สร้างบัญชี<br/>VET / STAFF"))
+    UC23(("ลบบัญชี<br/>VET / STAFF"))
     UC17(("ดู Audit Log"))
     UC18(("รับการแจ้งเตือน<br/>(in-app)"))
     UC19(("Deploy / Monitoring /<br/>Auto-recovery"))
@@ -61,6 +62,7 @@ flowchart LR
   STAFF --> UC14
   STAFF --> UC15
   STAFF --> UC16
+  STAFF --> UC23
   STAFF --> UC17
   STAFF --> UC18
   STAFF --> UC22
@@ -77,11 +79,12 @@ flowchart LR
   UC13 -. "«include»" .-> UC20
   UC14 -. "«include»" .-> UC20
   UC15 -. "«include»" .-> UC20
+  UC23 -. "«include»" .-> UC20
   UC21 -. "«include»" .-> UC20
 
   classDef actor fill:#fef3c7,stroke:#d97706,color:#78350f,stroke-width:2px;
   classDef uc fill:#e0f2fe,stroke:#0284c7,color:#0c4a6e;
   class OWNER,VET,STAFF,OPS,WORKER actor;
-  class UC1,UC2,UC3,UC4,UC5,UC6,UC7,UC8,UC9,UC10,UC11,UC12,UC13,UC14,UC15,UC16,UC17,UC18,UC19,UC20,UC21,UC22 uc;
+  class UC1,UC2,UC3,UC4,UC5,UC6,UC7,UC8,UC9,UC10,UC11,UC12,UC13,UC14,UC15,UC16,UC17,UC18,UC19,UC20,UC21,UC22,UC23 uc;
   style ACT fill:#fffbeb,stroke:#f59e0b,stroke-width:2px
   style SYS fill:#f8fafc,stroke:#94a3b8,stroke-width:2px
