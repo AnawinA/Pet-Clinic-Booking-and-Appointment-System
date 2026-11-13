@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from sqlalchemy import func, select
 
 from app.models import AuditLog
+from app.services import queue_service
 from tests.conftest import test_session_factory
 from tests.helpers import auth, book
 
@@ -49,6 +50,35 @@ async def test_invalid_transition_returns_409(client, tokens, seeded):
     )
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "INVALID_TRANSITION"
+
+
+async def test_no_show_is_rejected_before_slot_start(client, tokens, seeded, monkeypatch):
+    booking = await book(
+        client, tokens["OWNER"], pet_id=seeded["pet1_id"],
+        vet_id=seeded["vet1_id"], day=seeded["day"], hour=10,
+    )
+    appointment_id = booking.json()["id"]
+    slot_start = datetime.fromisoformat(booking.json()["slot_start"])
+
+    monkeypatch.setattr(
+        queue_service, "now_utc", lambda: slot_start - timedelta(seconds=1)
+    )
+    response = await client.patch(
+        f"/api/v1/appointments/{appointment_id}/status",
+        headers=auth(tokens["STAFF"]),
+        json={"status": "NO_SHOW", "expected_version": 1},
+    )
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "NO_SHOW_TOO_EARLY"
+
+    monkeypatch.setattr(queue_service, "now_utc", lambda: slot_start)
+    response = await client.patch(
+        f"/api/v1/appointments/{appointment_id}/status",
+        headers=auth(tokens["STAFF"]),
+        json={"status": "NO_SHOW", "expected_version": 1},
+    )
+    assert response.status_code == 200
+    assert response.json()["status"] == "NO_SHOW"
 
 
 async def test_stale_version_returns_409(client, tokens, seeded):

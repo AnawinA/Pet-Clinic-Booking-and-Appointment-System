@@ -40,7 +40,7 @@ OpenAPI: `http://localhost/api/docs`
 | POST `/appointments` | OWNER | 201 สำเร็จ, 409 ถ้าชน |
 | GET `/appointments` หรือ `/appointments/me` | OWNER | นัดของฉัน |
 | GET `/appointments/{id}` | เจ้าของ/VET ที่ได้มอบหมาย/STAFF | |
-| POST `/appointments/{id}/cancel` | OWNER, STAFF | OWNER ต้องเหลือ ≥ 2 ชม. |
+| POST `/appointments/{id}/cancel` | OWNER, STAFF | OWNER ยกเลิกได้เฉพาะสถานะ BOOKED และต้องเหลือ ≥ 2 ชม.; STAFF ยกเลิกนัดที่ยังไม่สิ้นสุดได้ |
 | GET `/appointments/{id}/queue-position` | OWNER | |
 | GET `/queue/live?date=&vet_id=&since=` | ทุกบทบาท | OWNER เห็นเฉพาะนัดของตัวเอง (คำนวณคิวก่อนหน้าจากคิวทั้งหมด), VET ดูได้เฉพาะคิวของตน, STAFF ดูได้ทุกคิว; รองรับ `If-None-Match` → 304 |
 | GET `/schedule?date=&vet_id=&since=` | VET (ตัวเอง), STAFF | รองรับ ETag |
@@ -88,7 +88,7 @@ curl -H "Authorization: Bearer $TOKEN" -H 'If-None-Match: W/"..."' \
 
 ```
 BOOKED → CHECKED_IN → IN_TREATMENT → COMPLETED
-   │           └──────→ NO_SHOW
-   └──────────→ NO_SHOW
+   │           └──────→ NO_SHOW (เมื่อถึงเวลาเริ่มนัด)
+   └──────────→ NO_SHOW (เมื่อถึงเวลาเริ่มนัด)
    └──────────→ CANCELLED
 ```

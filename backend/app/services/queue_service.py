@@ -217,6 +217,8 @@ async def change_status(
     appt = await lock_appointment(session, appointment_id)
     if appt.version != expected_version:
         raise conflict("STALE_VERSION", "ข้อมูลถูกแก้ไขโดยผู้ใช้อื่น กรุณาโหลดใหม่")
+    if target == AppointmentStatus.NO_SHOW and now_utc() < appt.slot_start:
+        raise conflict("NO_SHOW_TOO_EARLY", "กำหนดสถานะไม่มาได้เมื่อถึงเวลาเริ่มนัดหมายแล้ว")
     if target not in ALLOWED_TRANSITIONS[appt.status]:
         raise conflict(
             "INVALID_TRANSITION",

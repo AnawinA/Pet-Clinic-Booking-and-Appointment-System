@@ -153,6 +153,8 @@ async def cancel_appointment(
     if actor.role == UserRole.OWNER:
         if locked.owner_id != actor.id:
             raise forbidden("นัดหมายนี้ไม่ใช่ของคุณ")
+        if locked.status != AppointmentStatus.BOOKED:
+            raise conflict("INVALID_TRANSITION", "เจ้าของสามารถยกเลิกได้เฉพาะนัดที่จองแล้ว")
         window = timedelta(hours=settings.cancellation_window_hours)
         if now_utc() > locked.slot_start - window:
             from app.core.errors import bad_request

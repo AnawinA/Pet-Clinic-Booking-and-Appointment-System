@@ -159,7 +159,7 @@ pipeline {
             steps {
                 sshagent(credentials: ['devtools-ssh']) {
                     sh '''
-                        $SSH_DEVTOOLS "cd '$REMOTE_DIR' && DOCKER_CONFIG='$AUTH_DIR' docker compose pull web1 nginx && DOCKER_CONFIG='$AUTH_DIR' docker compose up -d --no-build --remove-orphans"
+                        $SSH_DEVTOOLS "cd '$REMOTE_DIR' && DOCKER_CONFIG='$AUTH_DIR' docker compose -p petcare pull web1 nginx && docker compose -p petcare up -d --no-build --remove-orphans"
                     '''
                 }
             }
@@ -171,7 +171,7 @@ pipeline {
                     sh '''
                     $SSH_DEVTOOLS "cd '$REMOTE_DIR' && bash -se" <<'REMOTE'
                     set -e
-                    docker compose run --rm web1 python -m scripts.seed
+                    docker compose -p petcare run --rm web1 python -m scripts.seed
                     BASE_URL=http://localhost bash scripts/post_deploy_check.sh
                     REMOTE
                     '''.stripIndent()
@@ -189,8 +189,10 @@ pipeline {
         always {
             sshagent(credentials: ['devtools-ssh']) {
                 sh '''
-                    $SSH_DEVTOOLS "cd '$REMOTE_DIR' && docker compose ps" || true
-                    $SSH_DEVTOOLS "cd '$REMOTE_DIR' && docker compose logs --tail=80 web1 web2 worker nginx" || true
+                    $SSH_DEVTOOLS "cd '$REMOTE_DIR' && docker compose -p petcare ps" || true
+                    $SSH_DEVTOOLS "cd '$REMOTE_DIR' && docker compose -p petcare logs --tail=80 web1 web2 worker nginx" || true
+                    $SSH_DEVTOOLS "cd '$REMOTE_DIR' && docker compose -p petcare-ci ps" || true
+                    $SSH_DEVTOOLS "cd '$REMOTE_DIR' && docker compose -p petcare-ci logs --tail=80 postgres web1 web2 worker" || true
                     $SSH_DEVTOOLS "docker --config '$AUTH_DIR' logout || true; rm -rf '$AUTH_DIR'; rm -f '$REMOTE_DIR/.jenkins-test.env'" || true
                 '''
             }

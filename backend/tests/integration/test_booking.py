@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import timedelta
 
+import pytest
 from sqlalchemy import func, select
 
 from app.models import AuditLog, OutboxEvent
@@ -139,6 +140,52 @@ async def test_owner_cancel_inside_two_hours_is_rejected(client, tokens, seeded,
     )
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "CANCEL_WINDOW_CLOSED"
+
+
+@pytest.mark.parametrize("target_status", ["CHECKED_IN", "IN_TREATMENT"])
+async def test_owner_can_only_cancel_booked_appointments(
+    client, tokens, seeded, monkeypatch, target_status
+):
+    booking = await book(
+        client,
+        tokens["OWNER"],
+        pet_id=seeded["pet1_id"],
+        vet_id=seeded["vet1_id"],
+        day=seeded["day"],
+        hour=12,
+    )
+    appointment_id = booking.json()["id"]
+    slot_start = __import__("datetime").datetime.fromisoformat(booking.json()["slot_start"])
+
+    version = booking.json()["version"]
+    for status in ("CHECKED_IN", "IN_TREATMENT"):
+        updated = await client.patch(
+            f"/api/v1/appointments/{appointment_id}/status",
+            headers=auth(tokens["STAFF"]),
+            json={"status": status, "expected_version": version},
+        )
+        assert updated.status_code == 200, updated.text
+        version = updated.json()["version"]
+        if status == target_status:
+            break
+
+    monkeypatch.setattr(
+        booking_service, "now_utc", lambda: slot_start - timedelta(hours=4)
+    )
+    response = await client.post(
+        f"/api/v1/appointments/{appointment_id}/cancel",
+        headers=auth(tokens["OWNER"]),
+        json={"reason": "ทดสอบยกเลิกหลังเริ่มกระบวนการ"},
+    )
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "INVALID_TRANSITION"
+
+    detail = await client.get(
+        f"/api/v1/appointments/{appointment_id}",
+        headers=auth(tokens["OWNER"]),
+    )
+    assert detail.status_code == 200
+    assert detail.json()["status"] == target_status
 
 
 async def test_staff_can_cancel_inside_two_hours(client, tokens, seeded, monkeypatch):

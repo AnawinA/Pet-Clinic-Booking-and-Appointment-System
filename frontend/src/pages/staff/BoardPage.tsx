@@ -219,19 +219,23 @@ export default function BoardPage() {
               </div>
 
               <div className="flex flex-wrap gap-1.5">
-                {NEXT[entry.status].map((next) => (
-                  <button
-                    key={next}
-                    type="button"
-                    className={
-                      next === "CANCELLED" || next === "NO_SHOW" ? "btn-secondary" : "btn-primary"
-                    }
-                    disabled={statusMutation.isPending}
-                    onClick={() => statusMutation.mutate({ entry, status: next })}
-                  >
-                    {ACTION_LABELS[next]}
-                  </button>
-                ))}
+                {NEXT[entry.status]
+                  .filter((next) => next !== "NO_SHOW" || Date.now() >= Date.parse(entry.slot_start))
+                  .map((next) => (
+                    <button
+                      key={next}
+                      type="button"
+                      className={
+                        next === "CANCELLED" || next === "NO_SHOW"
+                          ? "btn-secondary"
+                          : "btn-primary"
+                      }
+                      disabled={statusMutation.isPending}
+                      onClick={() => statusMutation.mutate({ entry, status: next })}
+                    >
+                      {ACTION_LABELS[next]}
+                    </button>
+                  ))}
                 <button
                   type="button"
                   className="btn-secondary"
