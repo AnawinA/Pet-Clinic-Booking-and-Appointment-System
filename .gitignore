@@ -17,4 +17,4 @@ blob-report/
 *.log
 .DS_Store
 .freebuff/
-ngrok/*
+*.pdf

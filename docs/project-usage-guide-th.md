@@ -235,39 +235,27 @@ Repository เป็น public จึงไม่ต้องใช้ GitHub to
 GitHub เข้าถึง `localhost:8080` บนเครื่องเราไม่ได้ จึงต้องเปิด HTTPS tunnel จาก ngrok ไปยัง Jenkins container ผ่าน Docker network `cicd-net`
 
 1. สมัครหรือเข้าสู่ระบบ ngrok แล้วคัดลอก authtoken จาก dashboard และ dev domain ที่บัญชีจัดสรรให้ เก็บ authtoken เป็นความลับ
-2. สร้างโฟลเดอร์ `ngrok` บน host นอก repository แล้วสร้างไฟล์ `traffic-policy.yml` ภายในด้วยเนื้อหาต่อไปนี้:
+2. ใช้ไฟล์ `./ngrok/traffic-policy.yml` ใน repository:
 
-```yaml
-on_http_request:
-  - name: allow-github-webhook-only
-    expressions:
-      - "!(req.method == 'POST' && req.url.path == '/github-webhook/')"
-    actions:
-      - type: custom-response
-        config:
-          status_code: 403
-          body: "Forbidden"
-```
-
-Policy นี้อนุญาตเฉพาะ `POST /github-webhook/` และตอบ `403` สำหรับ path หรือ method อื่นก่อน request จะถึง Jenkins เป็นชั้นป้องกันเพิ่มเติม ไม่ใช่สิ่งทดแทน webhook secret หรือ Jenkins authentication
+   ตรวจให้แน่ใจว่าไฟล์มี Traffic Policy ที่อนุญาตเฉพาะ `POST /github-webhook/` และตอบ `403` สำหรับ path หรือ method อื่นก่อน request จะถึง Jenkins เป็นชั้นป้องกันเพิ่มเติม ไม่ใช่สิ่งทดแทน webhook secret หรือ Jenkins authentication
 
 ### ตั้ง NGROK_AUTHTOKEN และเริ่ม ngrok
 
-แทน `YOUR_NGROK_DOMAIN` ด้วย dev domain ของบัญชี ngrok และเปลี่ยน path ของโฟลเดอร์ให้ตรงกับตำแหน่งที่เก็บ `traffic-policy.yml` คำสั่งจะรับ token แบบไม่แสดงค่าที่พิมพ์และไม่ใส่ token ตรง ๆ ใน command history
+รันคำสั่งจาก repository root และกำหนด `NGROK_DOMAIN` เป็น dev domain ของบัญชี ngrok คำสั่งจะ mount ไฟล์ policy จาก `./ngrok/traffic-policy.yml` และรับ token แบบไม่แสดงค่าที่พิมพ์หรือใส่ token ตรง ๆ ใน command history
 
 **Windows PowerShell** :
 
 ```powershell
-$secure = Read-Host "ngrok authtoken" -AsSecureString; $env:NGROK_AUTHTOKEN = (New-Object System.Net.NetworkCredential("", $secure)).Password; docker run -d --name ngrok --network cicd-net --restart unless-stopped -p 127.0.0.1:4040:4040 -e NGROK_AUTHTOKEN --mount "type=bind,source=<ABSOLUTE_PATH_TO_TRAFFIC_POLICY_FOLDER>,target=/etc/ngrok,readonly" ngrok/ngrok:latest http http://jenkins:8080 --url https://<YOUR_NGROK_DOMAIN> --traffic-policy-file /etc/ngrok/traffic-policy.yml --log stdout; Remove-Item Env:NGROK_AUTHTOKEN
+$NGROK_DOMAIN = Read-Host "ngrok dev domain (e.g. example.ngrok.app)"; $policyPath = (Resolve-Path .\ngrok\traffic-policy.yml).Path; $secure = Read-Host "ngrok authtoken" -AsSecureString; $env:NGROK_AUTHTOKEN = (New-Object System.Net.NetworkCredential("", $secure)).Password; docker run -d --name ngrok --network cicd-net --restart unless-stopped -p 127.0.0.1:4040:4040 -e NGROK_AUTHTOKEN --mount "type=bind,source=$policyPath,target=/etc/ngrok/traffic-policy.yml,readonly" ngrok/ngrok:latest http http://jenkins:8080 --url "https://$NGROK_DOMAIN" --traffic-policy-file /etc/ngrok/traffic-policy.yml --log stdout; Remove-Item Env:NGROK_AUTHTOKEN
 ```
 
 **Linux shell (bash)**
 
 ```bash
-read -rsp "ngrok authtoken: " NGROK_AUTHTOKEN; export NGROK_AUTHTOKEN; printf '\n'; docker run -d --name ngrok --network cicd-net --restart unless-stopped -p 127.0.0.1:4040:4040 -e NGROK_AUTHTOKEN --mount "type=bind,source=<ABSOLUTE_PATH_TO_TRAFFIC_POLICY_FOLDER>,target=/etc/ngrok,readonly" ngrok/ngrok:latest http http://jenkins:8080 --url https://<YOUR_NGROK_DOMAIN> --traffic-policy-file /etc/ngrok/traffic-policy.yml --log stdout; unset NGROK_AUTHTOKEN
+read -r -p "ngrok dev domain (e.g. example.ngrok.app): " NGROK_DOMAIN; read -rsp "ngrok authtoken: " NGROK_AUTHTOKEN; export NGROK_AUTHTOKEN; printf '\n'; docker run -d --name ngrok --network cicd-net --restart unless-stopped -p 127.0.0.1:4040:4040 -e NGROK_AUTHTOKEN --mount "type=bind,source=$PWD/ngrok/traffic-policy.yml,target=/etc/ngrok/traffic-policy.yml,readonly" ngrok/ngrok:latest http http://jenkins:8080 --url "https://$NGROK_DOMAIN" --traffic-policy-file /etc/ngrok/traffic-policy.yml --log stdout; unset NGROK_AUTHTOKEN
 ```
 
-ตัวเลือก `-e NGROK_AUTHTOKEN` ส่งค่าจาก environment ปัจจุบันเข้า container ส่วน `--mount` ใช้ path เต็มของโฟลเดอร์และ mount แบบ read-only; Docker เก็บ environment ของ container ใน metadata จึงจำกัดสิทธิ์ผู้ที่เข้าถึง Docker daemon ได้
+ตัวเลือก `-e NGROK_AUTHTOKEN` ส่งค่าจาก environment ปัจจุบันเข้า container ส่วน `--mount` ใช้ path เต็มของไฟล์ policy และ mount แบบ read-only; Docker เก็บ environment ของ container ใน metadata จึงจำกัดสิทธิ์ผู้ที่เข้าถึง Docker daemon ได้
 
 ตรวจว่า ngrok container ทำงานและไม่มี error:
 

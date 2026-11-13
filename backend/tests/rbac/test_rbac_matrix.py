@@ -61,6 +61,18 @@ async def test_schedule_visibility(client, tokens, seeded):
     assert staff.status_code == 200
 
 
+async def test_vet_cannot_view_another_vets_live_queue(client, tokens, seeded):
+    response = await client.get(
+        "/api/v1/queue/live",
+        headers=auth(tokens["VET"]),
+        params={
+            "date": seeded["day"].isoformat(),
+            "vet_id": str(seeded["vet2_id"]),
+        },
+    )
+    assert response.status_code == 403
+
+
 async def test_shift_endpoints_role_boundaries(client, tokens, seeded):
     day = seeded["day"] + timedelta(days=2)
     payload = {

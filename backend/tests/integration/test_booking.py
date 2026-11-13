@@ -185,6 +185,48 @@ async def test_queue_position_for_owner(client, tokens, seeded):
     assert response.json()["estimated_start"] is not None
 
 
+async def test_live_queue_hides_other_owners_pet_data(client, tokens, seeded):
+    other_owner_booking = await book(
+        client,
+        tokens["OWNER2"],
+        pet_id=seeded["pet3_id"],
+        vet_id=seeded["vet1_id"],
+        day=seeded["day"],
+        hour=13,
+    )
+    own_booking = await book(
+        client,
+        tokens["OWNER"],
+        pet_id=seeded["pet1_id"],
+        vet_id=seeded["vet1_id"],
+        day=seeded["day"],
+        hour=13,
+        minute=30,
+    )
+    assert other_owner_booking.status_code == own_booking.status_code == 201
+
+    response = await client.get(
+        "/api/v1/queue/live",
+        headers=auth(tokens["OWNER"]),
+        params={
+            "date": seeded["day"].isoformat(),
+            "vet_id": str(seeded["vet1_id"]),
+        },
+    )
+
+    assert response.status_code == 200
+    items = response.json()["items"]
+    assert len(items) == 1
+    assert items[0]["appointment_id"] == own_booking.json()["id"]
+    assert items[0]["pet_id"] == str(seeded["pet1_id"])
+    assert items[0]["ahead_count"] == 1
+    assert all(
+        item["pet_id"] != str(seeded["pet3_id"])
+        and item["appointment_id"] != other_owner_booking.json()["id"]
+        for item in items
+    )
+
+
 async def test_other_owner_cannot_read_or_cancel(client, tokens, seeded):
     booking = await book(
         client, tokens["OWNER"], pet_id=seeded["pet1_id"],

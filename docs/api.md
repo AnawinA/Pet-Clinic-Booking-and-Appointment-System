@@ -42,7 +42,7 @@ OpenAPI: `http://localhost/api/docs`
 | GET `/appointments/{id}` | เจ้าของ/VET ที่ได้มอบหมาย/STAFF | |
 | POST `/appointments/{id}/cancel` | OWNER, STAFF | OWNER ต้องเหลือ ≥ 2 ชม. |
 | GET `/appointments/{id}/queue-position` | OWNER | |
-| GET `/queue/live?date=&vet_id=&since=` | ทุกบทบาท | รองรับ `If-None-Match` → 304 |
+| GET `/queue/live?date=&vet_id=&since=` | ทุกบทบาท | OWNER เห็นเฉพาะนัดของตัวเอง (คำนวณคิวก่อนหน้าจากคิวทั้งหมด), VET ดูได้เฉพาะคิวของตน, STAFF ดูได้ทุกคิว; รองรับ `If-None-Match` → 304 |
 | GET `/schedule?date=&vet_id=&since=` | VET (ตัวเอง), STAFF | รองรับ ETag |
 | PATCH `/appointments/{id}/status` | STAFF | ต้องส่ง `expected_version` |
 | PATCH `/appointments/{id}/reschedule` | STAFF | ต้องส่ง `expected_version` |
